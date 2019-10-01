@@ -86,26 +86,10 @@ class oscillator(object):
     def kura_dy(self):
         # kuramoto dynamic phase update for each oscillator
         # save sum of 'sin' difference
-        #sin_sum = 0
         diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
         delta = self.in_frq + (self.K * .5) * (self.c_mats * torch.sin(diffs)).mean(2)
         self.phase = (self.phase + self.ep * delta) % (2 * np.pi)
         self.freq = delta
-        #for idx_n in range(self.N):
-        #    # exclude itself
-        #    if idx_n == idx_m:
-        #        continue
-        #    else:
-        #        # sum up all 'sin' differences
-        #        sin_sum += self.c_mat[idx_m, idx_n] * np.sin(phase_copy[idx_n] - phase_copy[idx_m])
-        # update phase
-        #delta = self.ep * (self.in_frq[idx_m] + self.K * sin_sum / self.N)
-        #self.phase[idx_m] += delta
-        # print(self.in_frq[idx_m], self.K * sin_sum / self.N)
-        # print(self.ep * (self.in_frq[idx_m] + self.K * sin_sum / self.N))
-        # scale phases to (0, 2*pi)
-        #self.phase[idx_m] = self.phase[idx_m] % (2 * np.pi)
-        #self.freq[idx_m] = delta
 
     def coherence(self):
         # compute coherence order
