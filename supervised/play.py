@@ -7,6 +7,7 @@ import numpy as np
 from make_data import polyomino_scenes
 # import matplotlib.pyplot as plt
 from itertools import product
+import os
 import torch
 from tqdm import tqdm
 import ipdb
@@ -107,5 +108,5 @@ plt.plot(losses)
 plt.hlines(min_avg_fp*np.ones((len(losses),)), 0, len(losses,),linestyles='dashed')
 plt.ylim([0, np.array(losses).max()])
 plt.legend(('Total', 'Synch', 'Desynch'))
-plt.savefig('/home/matt/loss_test.png')
+plt.savefig(os.path.join(osci.save_dir, 'loss_test.png'))
 plt.close()
