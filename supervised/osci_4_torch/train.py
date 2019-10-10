@@ -1,22 +1,23 @@
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+plt.ioff()
+plt.style.use('ggplot')
 import torch
 from net import net, weights_init
 from osci_tools import matt_loss, coherence_loss, evolution, IP_loss
 from make_data_new import generate_small, polyomino_scenes, generate_test_img
 import numpy as np
-import matplotlib.pyplot as plt
 import os
 from torch.nn.utils import clip_grad_norm_
+import ipdb
 
-
-PATH = './save25_IP.pt'
-
-
-class TrainPiprline(object):
+class TrainPipeline(object):
     def __init__(self,
                  n=1,
                  num=2,
                  lr=1e-2,
-                 report=1,
+                 report=25,
                  batch_size=16,
                  train_step=100,
                  evolution_step=20,
@@ -34,6 +35,14 @@ class TrainPiprline(object):
         self.batch = batch_size
         # image size
         self.img_side = img_side
+        # save dir
+        self.fig_dir = os.path.join(os.path.expanduser('~'), 'oscillators')
+        # model dir
+        self.data_dir = os.path.join(os.path.expanduser('~'),'osc_models')
+
+        for dr in [self.fig_dir, self.data_dir]:
+            if not os.path.exists(dr):
+                os.makedirs(dr)
 
         # initialize a generator
         if self.img_side > 2:
@@ -88,7 +97,7 @@ class TrainPiprline(object):
                 batch, sd = self.generator.generate_batch()
             else:
                 batch, sd = generate_small(self.batch, self.num, self.img_side)
-            print('data generated')
+            #print('data generated')
             # give data a channel and pad with tensorflow strategy 'SAME'
             batch = self.convert2oned(batch, test=False)
             #print(batch)
@@ -97,11 +106,12 @@ class TrainPiprline(object):
             self.optimizer.zero_grad()
             coupling_mats = self.network(batch)
 
-            final_phase = evolution(self.episodes, coupling_mats, self.batch, self.img_side ** 2)
+            final_phase = evolution(self.episodes, coupling_mats, self.batch, self.img_side ** 2, anneal=True)
             mask = torch.tensor(list(map(self._mask_pro, sd))).float()
 
             #print(final_phase.shape, mask.shape)
-            total_loss, synch_loss, desynch_loss = IP_loss(final_phase, mask)
+            #total_loss, synch_loss, desynch_loss = IP_loss(final_phase, mask)
+            total_loss, synch_loss, desynch_loss = matt_loss(final_phase, mask, alpha1=1.0,alpha2=1.0)
             total_loss.backward()
             clip_grad_norm_(self.network.parameters(), .1)
 
@@ -122,13 +132,13 @@ class TrainPiprline(object):
                 #print(final_phase)
                 loss = np.array([total_loss.data.numpy(), synch_loss.data.numpy(), desynch_loss.data.numpy()])
                 print('STEPS: ', str(t), '|LOSS: ', str(loss))
-                np.save('./maps25.npy', self.maps)
-                torch.save(self.network.state_dict(), PATH)
+                np.save(os.path.join(self.data_dir,'./maps25.npy'), self.maps)
+                torch.save(self.network.state_dict(), os.path.join(self.data_dir, 'IP_loss.pt'))
                 self.loss_history.append(
                     np.array([total_loss.data.numpy(), synch_loss.data.numpy(), desynch_loss.data.numpy()]))
                 plt.plot(np.array(self.loss_history))
                 plt.legend(('Total', 'Synch', 'Desynch'))
-                plt.savefig('coupling_net_loss25.png')
+                plt.savefig(os.path.join(self.fig_dir, 'coupling_net_loss25.png'))
                 plt.close()
 
     def _mask_pro(self, group_dict):
@@ -152,6 +162,6 @@ class TrainPiprline(object):
 
 
 if __name__ == '__main__':
-    training = TrainPiprline(n=1, num=2, img_side=2, evolution_step=30, train_step=100)
+    training = TrainPipeline(n=1, num=2, img_side=2, evolution_step=50, train_step=10000, lr=1e-4)
     print('start optimizing')
     training.opt()

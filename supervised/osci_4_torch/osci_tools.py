@@ -2,58 +2,64 @@ import numpy as np
 import torch
 import torch.distributions.uniform as uniform
 import torch.distributions.cauchy as cauchy
+import ipdb
 
-
-def phase_up(phase, coupling_mat):
+def phase_up(phase, coupling_mat, eps=.1):
     diffs = phase.unsqueeze(1) - phase.unsqueeze(2)
     # For now intrinsic frequency just zeros
     delta = (coupling_mat * torch.sin(diffs)).sum(2)
     # print('phase', phase)
     # print('diffs', diffs)
     # print('delta', delta)
-    return (phase + .1 * delta) % (2 * np.pi)
+    return (phase + eps * delta) % (2 * np.pi)
 
 
-def evolution(timestep, coupling_mat, batch, N):
-    m1 = uniform.Uniform(torch.tensor([0.0]), torch.tensor([2 * np.pi]))
-    phase = m1.sample(sample_shape=torch.tensor([batch, N]))
-    phase = phase.reshape([batch, N])
+def evolution(timesteps, coupling_mat, batch, N, eps_init=.1, anneal=False):
+    #m1 = uniform.Uniform(torch.tensor([0.0]), torch.tensor([2 * np.pi]))
+    #phase = m1.sample(sample_shape=torch.tensor([batch, N]))
+    phase = 2*np.pi*torch.rand((batch,N))
+    #phase = phase.reshape([batch, N])
 
     #m2 = uniform.Uniform(torch.tensor([-0.1]), torch.tensor([0.1]))
     #pulse = m2.sample(sample_shape=torch.tensor([batch, N]))
     i = torch.tensor([0])
-    while i < timestep:
-        phase = phase_up(phase, coupling_mat)
+    while i < timesteps:
+        eps = eps_init if not anneal else eps_init - (float(i) / timesteps) * eps_init
+        phase = phase_up(phase, coupling_mat, eps=eps)
         i = i + 1
     # return final state
     #pulse = pulse.reshape([batch, N])
     return phase
 
 
-def matt_loss(phase, mask):
-    diffs = phase.unsqueeze(1) - phase.unsqueeze(2)
-    # return torch.abs(torch.sin(.5*diffs)).mean()
-    synch_loss = .5 * torch.where(diffs < np.pi, torch.abs(diffs), 2 * np.pi - torch.abs(diffs)).mean()
+def matt_loss(phase, mask, alpha1=1.0, alpha2=1.0):
+    '''Synchrony loss: within-group coherence.
+       Desynchrony loss: between-group frame potential'''
 
-    masked_phase = torch.mul(phase.unsqueeze(1), mask)
-    sin_vec = torch.sin(masked_phase)
-    cos_vec = torch.where(masked_phase == 0., masked_phase, torch.cos(masked_phase))
+    # Image parameters
 
-    # avg over groups
-    sin_mean = div_no_nan(torch.sum(sin_vec, dim=2), torch.sum(mask, dim=2))
-    cos_mean = div_no_nan(torch.sum(cos_vec, dim=2), torch.sum(mask, dim=2))
+    # Number of pixels in each group
+    num_group_el = mask.sum(-1)
+    
+    # Number of groups, assuming empty groups have all 0s
+    num_groups   = (num_group_el > 0).sum(1).float()
 
-    sin_mat = torch.matmul(sin_mean.unsqueeze(2), sin_mean.unsqueeze(1))
-    cos_mat = torch.matmul(cos_mean.unsqueeze(2), cos_mean.unsqueeze(1))
+    # Size of image
+    img_size     = phase.shape[1]
 
-    diag_mat = (1 - torch.eye(sin_mat.shape[1], sin_mat.shape[1])).unsqueeze(0)
-    sin_mat = sin_mat * diag_mat
-    cos_mat = cos_mat * diag_mat
+    # Mask phase: dim 1 is group index
+    masked_phase = phase.unsqueeze(1) * mask 
+    # Synch loss is coherence. Note that cos is adjusted to account for 0 elments
+    synch_loss = 1 - (torch.sqrt((torch.sin(masked_phase).sum(-1)**2 + (torch.cos(masked_phase).sum(-1) - (img_size - num_group_el))**2)) / num_group_el).mean()
 
-    desync_loss = ((sin_mat + cos_mat) ** 2).mean()
+    # Average phase in group 
+    group_phase = masked_phase.sum(-1) / num_group_el
+    # Frame potential
+    desynch_loss     = ((torch.abs(torch.cos(group_phase.unsqueeze(1) - group_phase.unsqueeze(2)))**2).sum((1,2)) / (num_groups**2)).mean()
 
-    tot_loss = 0.2 * synch_loss + desync_loss
-    return tot_loss, synch_loss, desync_loss
+    # total loss with weighting    
+    tot_loss = alpha1*synch_loss + alpha2*desynch_loss
+    return tot_loss, synch_loss, desynch_loss
 
 
 def coherence_loss(phase, mask):
