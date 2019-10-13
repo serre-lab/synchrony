@@ -11,6 +11,7 @@ from itertools import imap, imap, groupby, chain, imap
 from operator import itemgetter
 from sys import argv
 from array import array
+import os
 import ipdb
 
 class polyomino_scenes(object):
@@ -46,7 +47,7 @@ class polyomino_scenes(object):
             diff_inds = []
             bgrnd = np.zeros((self.image_side, self.image_side))
             canvas = bgrnd.copy()
-            num_same =  int(np.ceil((self.num_objects - 1) * np.random.rand()) + 1)
+            num_same =  int(np.ceil( self.num_objects * np.random.rand()) + 1) if self.n > 1 else self.num_objects
 
             # place first
             same_ind = np.random.randint(len(self.n_ominoes))
@@ -59,9 +60,9 @@ class polyomino_scenes(object):
             local_coords = np.where(same_poly==1.0)
             global_coords = [local_coords[0] + coord[0], local_coords[1] + coord[1]]
             sameness_dict['same_group'] = global_coords
-            for n in range(self.num_objects - 1):
+            for m in range(self.num_objects - 1):
                 
-                if n < num_same - 1:
+                if m < num_same - 1:
                     poly = same_poly
                 else:
                     ind = np.random.randint(len(self.n_ominoes))
@@ -79,7 +80,7 @@ class polyomino_scenes(object):
                     if not overlap:
                         local_coords = np.where(poly==1.0)
                         global_coords = [local_coords[0] + coord[0], local_coords[1] + coord[1]]
-                        key = 'diff_group_{}'.format(n-num_same+1) if n >= num_same - 1 else 'same_group'
+                        key = 'diff_group_{}'.format(m-num_same+1) if m >= num_same - 1 else 'same_group'
                         if key == 'same_group':
                             sameness_dict[key][0] = np.concatenate((sameness_dict[key][0], global_coords[0]),0)
                             sameness_dict[key][1] = np.concatenate((sameness_dict[key][1], global_coords[1]),0)
@@ -221,10 +222,9 @@ if __name__ == '__main__':
     #area = triominos()
     #plt.imshow(area)
     #plt.show(a
-    generator = polyomino_scenes(5,32,4,rotations=False)
+    generator = polyomino_scenes(1,4,2,rotations=False)
     batch, dicts = generator.generate_batch()
-    ipdb.set_trace()
     fig,axes = plt.subplots(2,2)
     for a, ax in enumerate(axes.reshape(-1)):
         ax.imshow(batch[a])
-    plt.show() 
+    plt.savefig(os.path.join(os.path.expanduser('~'), 'polyominoes.png'))

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 plt.ioff()
 plt.style.use('ggplot')
 import torch
-from net import net, weights_init
+from nets import net, weights_init
 from osci_tools import matt_loss, coherence_loss, evolution, IP_loss
 from make_data_new import generate_small, polyomino_scenes, generate_test_img
 import numpy as np

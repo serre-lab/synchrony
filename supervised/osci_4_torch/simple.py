@@ -39,7 +39,6 @@ def outer_opt(maximize=False, k_mag=1.0, num_steps=1000,lr=1e-4, inner_show=25, 
     outer_optim = torch.optim.SGD((k,),lr=lr)
     k_history    = []
     loss_history = []
-    save_dir = os.path.join(os.path.expanduser('~'), 'oscillators')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     for m in tqdm(range(num_steps)):
@@ -66,4 +65,17 @@ if __name__=='__main__':
         k_mag controls the magnitude of the initial coupling. 
         When maximize is true, the sign of the initial coupling is negative. '''
 
-    outer_opt(maximize=True, k_mag = 1.0, lr=1e-4)
+    save_dir = os.path.join(os.path.expanduser('~'), 'oscillators')
+    display_true = True
+    if display_true:
+        coh = []
+        ks = np.linspace(-2,2,1000)
+        for k in ks:
+            phase, _ = inner_opt(k, num_steps=100)
+            coh.append(coherence(phase).data.numpy())  
+        plt.plot(ks,coh, 'b.')    
+        plt.xlabel('K')
+        plt.ylabel('Coherence')
+        plt.savefig(os.path.join(save_dir, 'coupling_vs_coh.png'))
+        plt.close()
+    #outer_opt(maximize=True, k_mag = 1.0, lr=1e-4)

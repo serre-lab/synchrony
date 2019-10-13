@@ -55,7 +55,7 @@ def matt_loss(phase, mask, alpha1=1.0, alpha2=1.0):
     # Average phase in group 
     group_phase = masked_phase.sum(-1) / num_group_el
     # Frame potential
-    desynch_loss     = ((torch.abs(torch.cos(group_phase.unsqueeze(1) - group_phase.unsqueeze(2)))**2).sum((1,2)) / (num_groups**2)).mean()
+    desynch_loss     = ((torch.abs(torch.cos(group_phase.unsqueeze(1) - group_phase.unsqueeze(2)))**2).sum((1,2)) / (num_groups**2) - (1./ num_groups)).mean()
 
     # total loss with weighting    
     tot_loss = alpha1*synch_loss + alpha2*desynch_loss
@@ -139,3 +139,5 @@ def IP_loss(phase, mask):
 
     tot_loss_mean = 0.1 * sync_loss_mean + desync_loss_mean
     return tot_loss_mean, sync_loss_mean, desync_loss_mean
+
+    

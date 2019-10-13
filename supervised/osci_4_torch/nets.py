@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
 import ipdb
+import numpy as np
 
-class net(nn.Module):
-    def __init__(self):
+class small_net(nn.Module):
+    def __init__(self, kernel_size, num_features):
         super(net, self).__init__()
-        self.conv = nn.Conv1d(1, 4, kernel_size=2, padding=0)
+        padding = int(np.floor(kernel_size / 2.0))
+        self.conv = nn.Conv1d(1, num_features, kernel_size=kernel_size, padding=padding)
         # conv.shape=(batch, 4, N)
 
     def forward(self, input):
@@ -30,7 +32,25 @@ class net(nn.Module):
         corr = cov / std
 
         return corr
+class big_net(nn.Module):
+    def __init__(self, img_side, num_layers, kernel_size):
+        super(big_net, self).__init__()
+        num_features = [1] + (num_layers + 1) * [4]
+        pad_size     = int(np.ceil((kernel_size -1)/ 2.0))
+        self.layers  = torch.nn.ModuleList([torch.nn.Conv2d(num_features[i], num_features[i+1], kernel_size, padding=pad_size) for i in range(num_layers)])
 
+    def forward(self,x):
+        batch_size = x.shape[0]
+        for l, layer in enumerate(self.layers):
+            x = layer(x)
+            x=torch.sigmoid(x) if l < len(self.layers) - 1 else x
+        means = x.mean(1)
+        stds  = x.std(1)
+        x     = x-means.unsqueeze(1)
+        x     = x.view(batch_size, x.shape[1], -1)
+        stds  = stds.view(batch_size, -1)
+        return torch.einsum('bci,bcj->bcij',x,x).mean(1) / torch.einsum('bi,bj->bij',stds,stds)
+           
 
 class net2(nn.Module):
     def __init__(self):
@@ -45,7 +65,7 @@ def weights_init(m):
 
 if __name__ == '__main__':
     x = torch.rand(1, 1, 4)
-    network = net()
+    network = big_net()
     network.parameters()
     corr = network(x)
     print(corr)

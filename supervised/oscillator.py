@@ -87,7 +87,7 @@ class oscillator(object):
         # kuramoto dynamic phase update for each oscillator
         # save sum of 'sin' difference
         diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
-        delta = self.in_frq + (self.K * .5) * (self.c_mats * torch.sin(diffs)).mean(2)
+        delta = self.in_frq + (self.c_mats * torch.sin(diffs)).mean(2)
         self.phase = (self.phase + self.ep * delta) % (2 * np.pi)
         self.freq = delta
 
@@ -176,7 +176,7 @@ class oscillator(object):
                 unit_vectors.append([mean_vector[0]/norm, mean_vector[1]/norm])
 
             dl+=self.desynch_loss(unit_vectors)
-        return (sl+dl) / self.batch_size, sl / self.batch_size, dl / self.batch_size
+        return (.2*sl+dl) / self.batch_size, sl / self.batch_size, dl / self.batch_size
 
 
 class run_osci:

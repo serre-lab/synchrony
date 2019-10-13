@@ -11,23 +11,23 @@ import os
 import ipdb
 
 class coupling_net(torch.nn.Module):
-    def __init__(self,img_side, num_layers, conv=False):
+    def __init__(self,img_side, num_layers, kernel_size, conv=False):
         super(coupling_net,self).__init__()
         self.img_side = img_side
         self.conv = conv
         if not conv:
             self.layers = torch.nn.ModuleList([torch.nn.Linear(img_side**2, img_side**2) for i in range(num_layers)]) 
         else:
-            num_features = [1] + (num_layers + 1)*[16]
-            kernel_size  = 5
-            self.layers = torch.nn.ModuleList([torch.nn.Conv2d(num_features[i], num_features[i+1], kernel_size, padding= 2) for i in range(num_layers)])
+            num_features = [1] + (num_layers + 1)*[4]
+            pad_size     = int(np.floor(kernel_size / 2.0))
+            self.layers = torch.nn.ModuleList([torch.nn.Conv2d(num_features[i], num_features[i+1], kernel_size, padding=pad_size) for i in range(num_layers)])
         
     def forward(self,x):
         batch_size = x.shape[0]
         if not self.conv: x.view(batch_size, -1)
         for layer in self.layers:
             x = layer(x)
-            x = torch.relu(x)
+            x = torch.sigmoid(x)
         if self.conv:
             means = x.mean(1)
             stds  = x.std(1)
@@ -40,23 +40,27 @@ class coupling_net(torch.nn.Module):
 
 if __name__=='__main__':
     loss_history = []
-    batch_size = 32
-    img_side = 16
-    num_layers  = 3
-    training_steps = 1000
-    lr             = 1e-3
-    osc_steps      = 50
+    polyomino_size = 1
+    num_objects    = 2
+    batch_size = 16
+    img_side = 4
+    num_layers  = 1
+    rotations   = False
+    training_steps = 5000
+    lr             = 5e-3
+    osc_steps      = 200
     show_every     = 32
     conv           = True
-    net = coupling_net(img_side, num_layers, conv=conv)
+    kernel_size    = 1
+    net = coupling_net(img_side, num_layers, kernel_size, conv=conv)
     optimizer = torch.optim.Adam(net.parameters(),lr=lr)    
-    generator = polyomino_scenes(4, img_side, 4, batch_size=batch_size)
+    generator = polyomino_scenes(polyomino_size, img_side, num_objects, batch_size=batch_size,rotations=rotations)
     for t in tqdm(range(training_steps)):
         batch, sd = generator.generate_batch()
         batch = torch.tensor(batch).float().unsqueeze(1)
         optimizer.zero_grad() 
         coupling_mats = net.forward(batch)
-        osci = oscillator(batch, sd, epsilon=0.1, K=256, img_side=img_side,coupling_mats=coupling_mats, classes=False, initial_frq=torch.zeros(batch_size, img_side**2))
+        osci = oscillator(batch, sd, epsilon=1e-1, K=1, img_side=img_side,coupling_mats=coupling_mats, classes=False, initial_frq=torch.zeros(batch_size, img_side**2))
         for i in range(osc_steps):
             osci.update()
         total_loss, synch_loss, desynch_loss = osci.seg_loss()
