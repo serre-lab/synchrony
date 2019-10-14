@@ -43,7 +43,7 @@ for step in range(training_steps):
     final_phase = osci.evolution(coupling, steps=50)
     loss1 = loss_func1(final_phase, train_mask)
     loss2 = 0.2 * loss_func2(final_phase, train_mask)
-    loss3 = 2 * loss_func3(final_phase, train_mask)
+    loss3 = loss_func3(final_phase, train_mask)
     loss4 = loss_func4(final_phase, train_mask)
 
     loss = loss1 + loss2 + loss3 + loss4
