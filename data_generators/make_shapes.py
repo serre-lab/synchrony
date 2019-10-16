@@ -49,9 +49,10 @@ def generate_shapes(num_imgs, num_shapes=3, bgrnd_phase=False, save_dir=None):
             
 if __name__=='__main__' :
     bgrnd_phase = True
+    bgrnd_name = 'BGRND' if bgrnd_phase else 'NO_BGRND'
     for ns in [1,2,3,4,5]:
         print('Making {} shape images.'.format(ns))
-        save_dir = './PHASE_SHAPES/{}/0'.format(ns)
+        save_dir = os.path.join(os.path.expanduser('~'), 'data/synch_data/PHASE_SHAPES_{}/{}/0'.format(bgrnd_name, ns))
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         generate_shapes(10000,num_shapes=ns,bgrnd_phase=bgrnd_phase,save_dir=save_dir)
