@@ -1,7 +1,10 @@
 import numpy as np
 from operator import itemgetter
 from itertools import groupby, chain
-imap = map
+try:
+    from iterbools import imap
+except ImportError:
+    imap = map
 
 
 def concat_map(func, it):
