@@ -7,7 +7,7 @@ import numpy as np
 import sys
 import loss_func_ex
 import copy
-
+import ipdb
 
 class displayer(object):
     """
@@ -64,12 +64,12 @@ class displayer(object):
         ax_im = fig.add_subplot(gs1[1])
         im = ax_im.imshow(self._convert2square(self.phases[0], ncols=ncols, nrows=nrows),
                           cmap='hsv', animated=True)
-        cbar = plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
-                                              cmap='hsv'),
-                            ax=ax_im,
-                            ticks=[np.pi / 2, np.pi, np.pi * 3 / 2],
-                            fraction=0.05)
-        cbar.ax.set_yticklabels(('0.5$\pi$', '$\pi$', '1.5$\pi$'))
+        #cbar = plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
+        #                                      cmap='hsv'),
+        #                    ax=ax_im,
+        #                    ticks=[np.pi / 2, np.pi, np.pi * 3 / 2],
+        #                    fraction=0.05)
+        #cbar.ax.set_yticklabels(('0.5$\pi$', '$\pi$', '1.5$\pi$'))
         ax_im.axis('off')
         gs1.tight_layout(fig, rect=[0, 0, 0.5, 1])
 
@@ -119,13 +119,14 @@ class displayer(object):
 
     def animate_evol(self, nrows, ncols, save_name=None):
         fig = plt.figure()
-
+ 
         gs1 = gridspec.GridSpec(1, 1)
         gs2 = gridspec.GridSpec(1, 1)
         gs3 = gridspec.GridSpec(1, 1)
         gs4 = gridspec.GridSpec(1, 2)
 
         ax_im = fig.add_subplot(gs1[0])
+        ipdb.set_trace()
         im = ax_im.imshow(self._convert2square(self.phases[0], ncols=ncols, nrows=nrows),
                           cmap='hsv', animated=True)
         s = 'steps: 0'
@@ -232,7 +233,7 @@ class displayer(object):
     def phase_evol(self, save_name=None):
         plt.style.use('seaborn-darkgrid')
         if self.masks is not None:
-            group_num = self.masks.shape[1]
+            group_num = int((self.masks.sum(-1) > 0).sum(-1))
             annot_bool = [True] * group_num
             colorlib = ['orange', 'c', 'g', 'm', 'r', 'y', 'b']
 
@@ -312,10 +313,11 @@ class displayer(object):
                 self.chs = loss_func_ex.coherence_np(self.phases)
                 self.abs = loss_func_ex.abs_angle_diffs_np(self.phases)
             else:
-                self.fps = loss_func_ex.fpt_btw_groups_np(self.phases, self.masks)
+                #self.fps = loss_func_ex.fpt_btw_groups_np(self.phases, self.masks)
                 self.inps = loss_func_ex.inp_btw_groups_np(self.phases, self.masks)
-                self.chs = loss_func_ex.coh_btw_groups_np(self.phases, self.masks)
+                #self.chs = loss_func_ex.coh_btw_groups_np(self.phases, self.masks)
                 self.abs = loss_func_ex.abs_angle_diffs_np(self.phases)
+                self.matt, self.chs, self.fps = loss_func_ex.matt_loss_np(self.phases, self.masks)
 
             assert len(self.fps.shape) == 1
             assert len(self.inps.shape) == 1

@@ -1,6 +1,67 @@
 import numpy as np
 import torch
+import ipdb
 
+
+def matt_loss_torch(phase, mask, eta=.5):
+    # Get image parameters
+
+    # Pixels per group
+    num_group_el = mask.sum(-1)
+    # Number of groups
+    num_groups = (num_group_el > 0).sum(1).unsqueeze(1).float()
+    # Normalization factor for each group, even if empty
+    per_group_norm = torch.where(num_group_el == 0, torch.ones_like(num_group_el), num_group_el)
+    # Image size
+    img_size = phase.shape[1]
+    # Mask phase: dim 1 is group index
+    masked_phase = phase.unsqueeze(1) * mask
+    # Group real part
+    group_real = (torch.cos(masked_phase).sum(-1) - (img_size - num_group_el)) / per_group_norm
+    # Group imag part
+    group_imag = torch.sin(masked_phase).sum(-1) / per_group_norm
+
+
+    # Mean field unnormalized per group
+    mean_field = (group_real**2 + group_imag**2)
+
+    # Synch loss is 1 - mean_field averaged across batch
+    synch_loss = 1 - (mean_field.sum(1) / num_groups).mean()
+
+    # Mask for where group angle is undefined
+    und_mask = (group_real==0)*(group_imag==0) 
+    # Temporarily replace imag part at masked indices
+    tmp_group_imag = torch.where(und_mask, torch.ones_like(group_imag), group_imag)
+
+    # Calculate phase of group 
+    group_phase = torch.atan2(tmp_group_imag,group_real)
+
+    # Mask all phase pairs where phase is defined
+    desynch_mask = ((1 - und_mask).unsqueeze(1) * (1 - und_mask).unsqueeze(2)).float()
+
+    # Phase diffs
+    group_phase_diffs = desynch_mask * torch.abs(torch.cos(group_phase.unsqueeze(1) - group_phase.unsqueeze(2)))**2
+
+    # Desynch loss is frame potential between groups normalized to be between 0 and 1
+    desynch_loss = (group_phase_diffs.sum((1,2)) / num_groups**2 - (1/ num_groups)).mean()
+
+    # Total loss is convex combination of the two losses
+    tot_loss = eta*synch_loss + (1-eta)*desynch_loss
+    return tot_loss, synch_loss, desynch_loss
+
+def matt_loss_np(phase,mask,eta=.5):
+    t = []
+    s = []
+    d = []
+
+    ma = torch.tensor(mask)
+    for i in range(phase.shape[0]):
+        ph = torch.tensor(phase[i,:]).unsqueeze(0)
+        total, synch, desynch = matt_loss_torch(ph, ma, eta=eta)
+        t.append(total.data.numpy())
+        s.append(synch.data.numpy())
+        d.append(desynch.data.numpy())
+    return np.array(t), np.array(s), np.array(d)
 
 def frame_pt_np(phase):
     diffs = np.expand_dims(phase, 1) - np.expand_dims(phase, 2)

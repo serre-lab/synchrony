@@ -2,6 +2,7 @@ import numpy as np
 import copy
 from tqdm import tqdm
 import torch
+import ipdb
 
 """
 DEFAULTS
@@ -25,7 +26,7 @@ class kura_np(object):
                  mean_field=1,
                  batch_size=1):
 
-        self.ep = updating_rate
+        self.eps_init = updating_rate
         self.K = mean_field
         self.batch = batch_size
         self.N = oscillator_num
@@ -54,11 +55,11 @@ class kura_np(object):
         else:
             self.coupling = np.zeros((self.N, self.N))
 
-    def set_ep(self, updating_rate=None):
-        if updating_rate is not None:
-            self.ep = updating_rate
-        else:
-            self.ep = 0.1
+    #def set_eps(self, updating_rate=None):
+    #    if updating_rate is not None:
+    #        self.ep = updating_rate
+    #    else:
+    #        self.ep = 0.1
 
     def set_mean_field(self, mean_field=None):
         if mean_field is not None:
@@ -72,7 +73,7 @@ class kura_np(object):
         # 0, B-A, C-A
         # A-B, 0, C-B
         # A-C, B-C, 0
-        self.delta = self.ep * (self.in_frq + np.sum(self.coupling * np.sin(diffs), axis=2) / (self.N - 1))
+        self.delta = self.eps * (self.in_frq + np.sum(self.coupling * np.sin(diffs), axis=2) / (self.N - 1))
         self.phase = (self.phase + self.delta) % (2 * np.pi)
         new_phase = copy.deepcopy(self.phase)
         freq = copy.deepcopy(self.delta)
@@ -108,17 +109,18 @@ class kura_np(object):
                    coupling=None,
                    initial_phase=None,
                    initial_freq=None):
-        self.set_ep(updating_rate)
+        #self.set_ep(updating_rate)
         self.set_mean_field(mean_field)
         self.phase_init(initial_phase)
         self.frequency_init(initial_freq)
         self.set_coupling(coupling)
 
+
     def eps_anneal(self,
                    i,
                    steps,
                    rate=0):
-        self.ep = self.ep - rate * float(i) * self.ep / steps
+        self.eps = self.eps - rate * float(i) * self.eps / steps
 
 
 class kura_torch(object):
@@ -130,7 +132,7 @@ class kura_torch(object):
                  update_rate=0.1,
                  mean_field=1,
                  batch_size=1):
-        self.ep = update_rate
+        self.eps_init = update_rate
         self.K = mean_field
         self.batch = batch_size
         self.N = oscillator_num
@@ -152,11 +154,11 @@ class kura_torch(object):
         else:
             self.in_frq = torch.zeros((self.batch, self.N))
 
-    def set_ep(self, updating_rate=None):
-        if updating_rate is not None:
-            self.ep = updating_rate
-        else:
-            self.ep = 0.1
+    #def set_eps(self, updating_rate=None):
+    #    if updating_rate is not None:
+    #        self.ep = updating_rate
+    #    else:
+    #        self.ep = 0.1
 
     def set_mean_field(self, mean_field=None):
         if mean_field is not None:
@@ -164,13 +166,14 @@ class kura_torch(object):
         else:
             self.K = 1
 
-    def _update(self, coupling, test):
+    def _update(self, coupling, test, mean=True):
         diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
         # diffs
         # 0, B-A, C-A
         # A-B, 0, C-B
         # A-C, B-C, 0
-        self.delta = self.ep * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.N - 1))
+        self.delta = self.eps * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) )
+        if mean: self.delta /= self.N - 1
         self.phase = self.phase + self.delta
         if test:
             self.phase = self.phase % (2 * np.pi)
@@ -179,6 +182,7 @@ class kura_torch(object):
     def evolution(self, coupling, steps=1, record=False, show=False, test=False, anneal=0):
         phases_list = [self.phase.data.numpy()]
         freqs_list = [self.delta.data.numpy()]
+        self.eps = self.eps_init
         if show:
             for i in tqdm(range(steps)):
                 new, freq = self._update(coupling, test)
@@ -205,7 +209,7 @@ class kura_torch(object):
                    mean_field=1,
                    initial_phase=None,
                    initial_freq=None):
-        self.set_ep(updating_rate)
+        #self.set_ep(updating_rate)
         self.set_mean_field(mean_field)
         self.phase_init(initial_phase)
         self.frequency_init(initial_freq)
@@ -214,4 +218,4 @@ class kura_torch(object):
                    i,
                    steps,
                    rate=0):
-        self.ep = self.ep - rate * float(i) * self.ep / steps
+        self.eps = self.eps - rate * float(i) * self.eps / steps
