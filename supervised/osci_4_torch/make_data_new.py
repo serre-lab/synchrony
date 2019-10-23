@@ -1,8 +1,17 @@
+DISPLAY=False
+if not DISPLAY:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    plt.ioff()
+else:
+    import matplotlib.pyplot as plt
 import numpy as np
 from operator import itemgetter
-from itertools import groupby, chain
-imap = map
-
+from itertools import imap, groupby, chain, imap
+from sys import argv
+from array import array
+import ipdb
 
 def concat_map(func, it):
     return list(chain.from_iterable(imap(func, it)))
@@ -51,7 +60,6 @@ def unique(lst):
 # All four points in Von Neumann neighborhood.
 contiguous = lambda z: [(z[0] - 1, z[1]), (z[0] + 1, z[1]), (z[0], z[1] - 1), (z[0], z[1] + 1)]
 
-
 def new_points(poly):
     """Finds all distinct points that can be added to a Polyomino."""
     return unique([pt for pt in concat_map(contiguous, poly) if pt not in poly])
@@ -72,7 +80,6 @@ def rank(n):
     if n == 1: return monominoes
     return unique(concat_map(new_polys, rank(n - 1)))
 
-
 class polyomino_scenes(object):
     def __init__(self, n, img_side, num_objects, batch_size, rotation=True):
         self.n = n
@@ -81,6 +88,7 @@ class polyomino_scenes(object):
         self.batch = batch_size
         self.rotation = rotation
         self.n_ominoes = self.generate_free_polyominoes(self.n)
+        self.num_n_ominoes = len(self.n_ominoes)
 
     def generate_free_polyominoes(self, n):
         fp = []
@@ -191,7 +199,7 @@ def generate_test_img(n, num, img_side):
 
 
 if __name__ == '__main__':
-    generator = polyomino_scenes(3, 4, 2, 1, True)
+    generator = polyomino_scenes(5, 16, 4, 1, True)
     canvas, dicts = generator.generate_batch()
 
     print(canvas)
