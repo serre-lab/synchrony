@@ -77,7 +77,7 @@ def hmc(phase, coupling, p_sigma=1.0, num_steps=1):
 
     # Accept using metropollis-hastings criterion
     # TODO: YOU MIGHT NOT ACCEPT ANYTHING. CRITERION?
-    phase = metropolis(phase, -1*p, prop_phase, prop_p, coupling, p_sigma)
+    phase = metropolis(phase, p, prop_phase, -1*prop_p, coupling, p_sigma)
     return phase
 
 def evaluate(phase_batch, coupling, p_sigma=1.0, num_samples=16, num_steps=256, save_dir=None):
@@ -123,7 +123,7 @@ def train(my_net, dl, num_epochs=100, lr=1e-3, hmc_steps=10):
             # Positive phase
             pos_potential = potential(coupling, phase_batch)
             # Calculate gradients of potential wrt net, keeping the graph for subsequent gradient computation.
-            (pos_potential.mean()).backward(retain_graph=True)
+            (-1*pos_potential.mean()).backward(retain_graph=True)
             pos_grads = [p.grad.clone().data for p in my_net.parameters()]
             optimizer.zero_grad()
     
@@ -132,7 +132,7 @@ def train(my_net, dl, num_epochs=100, lr=1e-3, hmc_steps=10):
             sample  = hmc(phase_batch, coupling, num_steps=hmc_steps)
             neg_potential = potential(coupling, sample)
             # Now gradient with respect to the model distribution
-            (neg_potential.mean()).backward()
+            (-1*neg_potential.mean()).backward()
             neg_grads = [p.grad.clone().data for p in my_net.parameters()]
             optimizer.zero_grad() 
 
@@ -158,4 +158,4 @@ if __name__=='__main__':
     my_net    = big_net(20,1,5).double().to(device)
 
     # Train net 
-    train(my_net, dl, lr=1e-3, hmc_steps=10)
+    train(my_net, dl, lr=1e-1, hmc_steps=10)

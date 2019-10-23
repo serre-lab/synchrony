@@ -19,7 +19,8 @@ class coupling_net(torch.nn.Module):
             self.layers = torch.nn.ModuleList([torch.nn.Linear(img_side**2, img_side**2) for i in range(num_layers)]) 
         else:
             num_features = [1] + (num_layers + 1)*[4]
-            pad_size     = int(np.floor(kernel_size / 2.0))
+            minus_one      = 0 if kernel_size % 0 is True else 1
+            pad_size     = int(np.floor((kernel_size - minus_one)/ 2.0))
             self.layers = torch.nn.ModuleList([torch.nn.Conv2d(num_features[i], num_features[i+1], kernel_size, padding=pad_size) for i in range(num_layers)])
         
     def forward(self,x):

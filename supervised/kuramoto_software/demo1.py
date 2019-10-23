@@ -1,4 +1,12 @@
-import net
+DISPLAY=False
+if DISPLAY:
+    import matplotlib as plt
+else:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    plt.ioff()
+import nets
 import kuramoto as km
 import kura_visual as kv
 import numpy as np
@@ -7,12 +15,17 @@ import loss_func_ex
 from make_data_new import polyomino_scenes, mask_pro
 import matplotlib.pyplot as plt
 import os
+import ipdb
 
 plt.style.use('seaborn-darkgrid')
 
-save_dir = './eight1 '
+home_dir = os.path.expanduser('~/')
+save_dir = os.path.join(home_dir, 'oscillators')
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
 model_name = '64_oscis_optim'
-save_name = './eight/' + model_name
+save_name =  os.path.join(save_dir, model_name)
+img_side = 16
 learning_rate = 1e-4
 training_steps = 5000
 episodes = 100
@@ -22,15 +35,18 @@ loss_func3 = loss_func_ex.exinp_btw_groups_torch
 loss_func4 = loss_func_ex.fpt_btw_groups_torch
 report = 100
 effect = 2
+batch_size=32
+#train_data = np.load('train_data.npz')
+#train_img = train_data['image']
+#train_mask = torch.tensor(train_data['mask']).float()
+generator = polyomino_scenes(5, img_side, 4, batch_size)
 
-train_data = np.load('train_data.npz')
-train_img = train_data['image']
-train_mask = torch.tensor(train_data['mask']).float()
 
-network = net.net2() # architecture
-network.apply(net.weights_init) # network initialization
+#network = net.net2() # architecture
+network = nets.big_net(img_side, 3)
+#network.apply(net.weights_init) # network initialization
 display = kv.displayer() # visualization
-osci = km.kura_torch(64)
+osci = km.kura_torch(img_side**2)
 loss_history = []
 
 train_op = torch.optim.Adam(network.parameters(), lr=learning_rate)
@@ -38,7 +54,12 @@ train_op = torch.optim.Adam(network.parameters(), lr=learning_rate)
 for step in range(training_steps):
     train_op.zero_grad()
 
-    coupling = network(train_img, effect=effect)
+    batch, sd = generator.generate_batch()
+    batch = torch.tensor(batch).unsqueeze(1).float()
+    ipdb.set_trace()
+    mask  = torch.tensor(list(map(generator.mask_pro, sd))).float()
+
+    coupling = network(batch)
     osci.phase_init()
     final_phase = osci.evolution(coupling, steps=50)
     loss1 = loss_func1(final_phase, train_mask)

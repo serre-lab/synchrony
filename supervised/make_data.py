@@ -33,6 +33,7 @@ class polyomino_scenes(object):
     def generate_free_polyominoes(self,n):
         fp = []
         for poly in rank(n):
+            ipdb.set_trace()
             bgrnd=np.zeros((max([i for (i,j) in poly]) + 1, max([j for (i,j) in poly]) + 1))
             for coord in poly:
                 bgrnd[coord] = 1.0
@@ -132,6 +133,7 @@ contiguous = lambda (x, y): [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
 
 def new_points(poly):
     """Finds all distinct points that can be added to a Polyomino."""
+    ipdb.set_trace()
     return unique([pt for pt in concat_map(contiguous, poly) if pt not in poly])
 
 def new_polys(poly):
@@ -222,7 +224,7 @@ if __name__ == '__main__':
     #area = triominos()
     #plt.imshow(area)
     #plt.show(a
-    generator = polyomino_scenes(1,4,2,rotations=False)
+    generator = polyomino_scenes(4,16,3,rotations=False)
     batch, dicts = generator.generate_batch()
     fig,axes = plt.subplots(2,2)
     for a, ax in enumerate(axes.reshape(-1)):

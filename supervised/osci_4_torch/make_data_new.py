@@ -8,10 +8,19 @@ else:
     import matplotlib.pyplot as plt
 import numpy as np
 from operator import itemgetter
+<<<<<<< HEAD
 from itertools import imap, groupby, chain, imap
 from sys import argv
 from array import array
 import ipdb
+=======
+from itertools import groupby, chain
+try:
+    from iterbools import imap
+except ImportError:
+    imap = map
+
+>>>>>>> 0c13d53359305935dcd5e1c3c3a4b368f83e52a3
 
 def concat_map(func, it):
     return list(chain.from_iterable(imap(func, it)))
