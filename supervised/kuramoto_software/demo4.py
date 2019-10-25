@@ -74,7 +74,7 @@ display = kv.displayer()
 # Kuramoto object
 osci = km.kura_torch(img_side**2, batch_size=batch_size, update_rate=update_rate)
 loss_history = []
-
+full_loss_history = []
 # Optimizer
 parameters = set()
 for net in [coupling_network, in_freq_network]: parameters |= set(net.parameters())
@@ -95,13 +95,18 @@ for step in range(training_steps):
 
     # Run dynamics
     osci.phase_init()
-    final_phase = osci.evolution(coupling, steps=episodes, anneal=anneal,in_freq=in_freq)
+    phase_list, _ = osci.evolution(coupling, steps=episodes, anneal=anneal,in_freq=in_freq, record=True, record_torch=True)
 
     # Calculate loss
-    loss, synch, desynch = loss_func(final_phase, mask, eta=0.0)
+    full_loss = 0
+    for t in range(episodes):
+        loss, synch, desynch = loss_func(phase_list[t], mask, eta=0.5)
+        full_loss += (t+1)**2 * loss
+    full_loss /= float(episodes)
+    full_loss_history.append(full_loss.data.numpy())
 
     # Calculate gradients and backpropagate
-    loss.backward()
+    full_loss.backward()
     train_op.step()
 
     if step % plot_when == 0:
@@ -111,6 +116,12 @@ for step in range(training_steps):
                fontsize=8)
         plt.savefig(save_name + '.png')
         plt.close()
+  
+        plt.plot(np.array(full_loss_history))
+        plt.title('Time-averaged loss')
+        plt.savefig(os.path.join(save_dir, 'time_averaged_loss.png'))
+        plt.close()
+       
 
     print('STEPS: ' + str(step).ljust(4) + '--------------' + str(loss.data.numpy()))
 

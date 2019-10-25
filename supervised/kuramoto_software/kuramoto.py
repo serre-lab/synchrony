@@ -166,35 +166,43 @@ class kura_torch(object):
         else:
             self.K = 1
 
-    def _update(self, coupling, test, mean=True):
+    def _update(self, coupling, test):
         diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
         # diffs
         # 0, B-A, C-A
         # A-B, 0, C-B
         # A-C, B-C, 0
-        self.delta = self.eps * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) )
-        if mean: self.delta /= self.N - 1
+        self.delta = self.eps * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.N - 1.) )
         self.phase = self.phase + self.delta
         if test:
             self.phase = self.phase % (2 * np.pi)
         return self.phase, self.delta
 
-    def evolution(self, coupling, steps=1, record=False, show=False, test=False, anneal=0):
-        phases_list = [self.phase.data.numpy()]
-        freqs_list = [self.delta.data.numpy()]
+    def evolution(self, coupling, steps=1, record=False, show=False, test=False, anneal=0, in_freq=None, record_torch=False):
+        phases_list = [self.phase] if record_torch else [self.phase.data.numpy()]
+        freqs_list = [self.delta] if record_torch else [self.delta.data.numpy()]
         self.eps = self.eps_init
+        self.frequency_init(in_freq)
         if show:
             for i in tqdm(range(steps)):
                 new, freq = self._update(coupling, test)
                 self.eps_anneal(i, steps, anneal)
-                phases_list.append(new.data.numpy())
-                freqs_list.append(freq.data.numpy())
+                if record_torch:
+                    phases_list.append(new)
+                    freqs_list.append(freq)
+                else:
+                    phases_list.append(new.data.numpy())
+                    freqs_list.append(freq.data.numpy())
         else:
             for i in range(steps):
                 new, freq = self._update(coupling, test)
                 self.eps_anneal(i, steps, anneal)
-                phases_list.append(new.data.numpy())
-                freqs_list.append(freq.data.numpy())
+                if record_torch:
+                    phases_list.append(new)
+                    freqs_list.append(freq)
+                else:
+                    phases_list.append(new.data.numpy())
+                    freqs_list.append(freq.data.numpy())
         try:
             if record:
                 return phases_list, freqs_list

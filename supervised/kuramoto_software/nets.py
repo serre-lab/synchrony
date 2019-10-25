@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-
+import ipdb
 
 class net(nn.Module):
     def __init__(self):
@@ -72,8 +72,10 @@ class net2(nn.Module):
         return corr * effect
 
 class big_net(nn.Module):
-    def __init__(self, img_side, num_layers, kernel_size=5, num_features=16):
+    def __init__(self, img_side, num_layers, kernel_size=5, num_features=16, return_coupling=False, normalize_output=True):
         super(big_net, self).__init__()
+        self.return_coupling = return_coupling
+        self.normalize_output = normalize_output
         num_features = [1] + (num_layers + 1) * [num_features]
         minus_one = 0 if kernel_size % 2 == 0 else 1
         pad_size = int((kernel_size - minus_one) / 2.0)
@@ -82,12 +84,20 @@ class big_net(nn.Module):
         batch_size = x.shape[0]
         for l, layer in enumerate(self.layers):
             x = layer(x)
-        means = x.mean(1)
-        stds = x.std(1)
-        x = x - means.unsqueeze(1)
-        x = x.view(batch_size, x.shape[1], -1)
-        stds = stds.view(batch_size, -1)
-        return torch.einsum('bci, bcj->bcij', x, x).mean(1) / torch.einsum('bi,bj->bij',stds,stds)
+        
+        if not self.return_coupling: 
+           return x.mean(1).view(batch_size, -1)
+        else:
+            if self.normalize_output:
+                means = x.mean(1)
+                stds = x.std(1)
+                x = x - means.unsqueeze(1)
+                x = x.view(batch_size, x.shape[1], -1)
+                stds = stds.view(batch_size, -1)
+                return torch.einsum('bci, bcj->bcij', x, x).mean(1) / torch.einsum('bi,bj->bij',stds,stds)
+            else:
+                x = x.view(batch_size, x.shape[1], -1)
+                return torch.einsum('bci, bcj->bcij', x, x).mean(1)
 
 class net_linear(nn.Module):
     def __init__(self, in_features, out_features):
@@ -99,13 +109,13 @@ class net_linear(nn.Module):
         return self.fc(input)
 
 
-def weights_init(m):
+def weights_init(m, w_mean=0.0, w_std=0.1, b_mean=0.0, b_std=0.01):
     if isinstance(m, nn.Conv1d) | isinstance(m, nn.Conv2d):
-        nn.init.normal_(m.weight, mean=0., std=.1)
-        nn.init.normal_(m.bias, mean=.0, std=.01)
+        nn.init.normal_(m.weight, mean=w_mean, std=w_std)
+        nn.init.normal_(m.bias, mean=b_mean, std=b_std)
     if isinstance(m, nn.Linear):
-        nn.init.uniform_(m.weight, 0., .1)
-        nn.init.uniform_(m.bias, 0., .5)
+        nn.init.uniform_(m.weight, w_mean, w_std)
+        nn.init.uniform_(m.bias, b_mean, b_std)
 
 
 def convert2twod(img_batch):

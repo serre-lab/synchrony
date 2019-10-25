@@ -7,6 +7,7 @@ import numpy as np
 import sys
 import loss_func_ex
 import copy
+from colorsys import hls_to_rgb
 import ipdb
 
 class displayer(object):
@@ -47,6 +48,7 @@ class displayer(object):
             self.masks = masks
 
     def animate_evol_compare(self, nrows, ncols, compare, save_name=None):
+        self.sq_phases = self._convert2square(self.phases[0],nrows=nrows,ncols=ncols)
         if self.masks is None:
             raise ValueError('There are no masks provided')
 
@@ -64,12 +66,14 @@ class displayer(object):
         ax_im = fig.add_subplot(gs1[1])
         im = ax_im.imshow(self._convert2square(self.phases[0], ncols=ncols, nrows=nrows),
                           cmap='hsv', animated=True)
+
         #cbar = plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
         #                                      cmap='hsv'),
         #                    ax=ax_im,
         #                    ticks=[np.pi / 2, np.pi, np.pi * 3 / 2],
         #                    fraction=0.05)
         #cbar.ax.set_yticklabels(('0.5$\pi$', '$\pi$', '1.5$\pi$'))
+
         ax_im.axis('off')
         gs1.tight_layout(fig, rect=[0, 0, 0.5, 1])
 
@@ -126,7 +130,6 @@ class displayer(object):
         gs4 = gridspec.GridSpec(1, 2)
 
         ax_im = fig.add_subplot(gs1[0])
-        ipdb.set_trace()
         im = ax_im.imshow(self._convert2square(self.phases[0], ncols=ncols, nrows=nrows),
                           cmap='hsv', animated=True)
         s = 'steps: 0'
