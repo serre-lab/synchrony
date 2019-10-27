@@ -73,8 +73,11 @@ make_gif = False
 gif_when  = 1
 
 #Initialize network
-coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_side=out_kernel_side).to(args.device)
-in_freq_network = big_net(img_side, 1, kernel_size=kernel_size,return_coupling=False, out_kernel_side=out_kernel_side).to(args.device)
+if args.device is not 'cpu':
+    device = 'cuda:{}'.format(args.device)
+
+coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_side=out_kernel_side).to(device)
+in_freq_network = big_net(img_side, 1, kernel_size=kernel_size,return_coupling=False, out_kernel_side=out_kernel_side).to(device)
 #for layer in coupling_network.layers:
 #    weights_init(layer,w_std=0.1, b_std=0.1, w_mean=.5, b_mean=.5)
 #for layer in in_freq_network.layers:
@@ -97,16 +100,16 @@ for step in range(training_steps):
 
     # Get batch
     batch, sd = generator.generate_batch()
-    mask  = torch.tensor(list(map(generator.mask_pro, sd))).float().to(args.device)
+    mask  = torch.tensor(list(map(generator.mask_pro, sd))).float().to(device)
 
     # Produce coupling
-    coupling = coupling_network(torch.tensor(batch).to(args.device).unsqueeze(1).float())
+    coupling = coupling_network(torch.tensor(batch).to(device).unsqueeze(1).float())
     #in_freq = in_freq_network(torch.tensor(batch).to(device).unsqueeze(1).float()) 
     #in_freq *= .1
     in_freq = None
 
     # Run dynamics
-    osci.phase_init(device=args.device)
+    osci.phase_init(device=device)
     phase_list, _ = osci.evolution(coupling, steps=episodes, anneal=anneal,in_freq=in_freq, record=True, record_torch=True)
 
     # Calculate loss
