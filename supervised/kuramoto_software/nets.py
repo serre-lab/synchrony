@@ -73,22 +73,26 @@ class net2(nn.Module):
         return corr * effect
 
 class big_net(nn.Module):
-    def __init__(self, img_side, num_layers, kernel_size=5, num_features=16, return_coupling=False, normalize_output=True, out_kernel_size=None):
+    def __init__(self, img_side, num_layers, kernel_size=5, num_features=16, return_coupling=False, normalize_output=True, out_kernel_side=None):
         super(big_net, self).__init__()
         self.img_side = img_side
         self.return_coupling = return_coupling
         self.normalize_output = normalize_output
-        self.kernel_mask = self.make_kernel_mask(out_kernel_size)
+        self.kernel_mask = self.make_kernel_mask(out_kernel_side)
         num_features = [1] + (num_layers + 1) * [num_features]
         minus_one = 0 if kernel_size % 2 == 0 else 1
         pad_size = int((kernel_size - minus_one) / 2.0)
         self.layers = torch.nn.ModuleList([torch.nn.Conv2d(num_features[i], num_features[i+1], kernel_size, padding=pad_size) for i in range(num_layers)])
 
-    def make_kernel_mask(self, out_kernel_size):
-        if out_kernel_size is None:
+    def make_kernel_mask(self, out_kernel_side):
+        if out_kernel_side is None:
             return torch.ones((self.img_side**2, self.img_side**2)).float()
         else:
-            return torch.tensor(toeplitz(np.concatenate((np.ones(out_kernel_size,), np.zeros((self.img_side**2 - out_kernel_size)))))).float()
+            toeplitz_row = np.zeros((self.img_side**2,))
+            for k in range(out_kernel_side - 1):
+                toeplitz_row[(k*self.img_side):(k * self.img_side) + out_kernel_side] = 1.0
+            return torch.tensor(toeplitz(toeplitz_row).T).float()
+                
 
     def forward(self, x):
         batch_size = x.shape[0]

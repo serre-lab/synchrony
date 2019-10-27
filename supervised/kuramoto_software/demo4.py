@@ -14,8 +14,14 @@ import torch
 import loss_func_ex
 from make_data_new import polyomino_scenes, mask_pro
 import matplotlib.pyplot as plt
-import os
+import os, sys
 import ipdb
+
+if len(sys.argv) > 1:
+    device_num = sys.argv[1]
+    device = 'cuda:{}'.device_num
+else:
+    device = 'cpu'
 
 plt.style.use('seaborn-darkgrid')
 
@@ -48,6 +54,7 @@ generator = polyomino_scenes(n, img_side, num_polys, batch_size, rotation=False,
 learning_rate = 1e-2
 training_steps = 5000
 kernel_size=5
+out_kernel_side=None
 
 # Dynamics duration
 episodes = 100
@@ -62,8 +69,8 @@ plot_when = 5
 gif_when  = 50
 
 #Initialize network
-coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_size=5)
-in_freq_network = big_net(img_side, 1, kernel_size=kernel_size,return_coupling=False, out_kernel_size=5)
+coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_side=out_kernel_side).to(device)
+in_freq_network = big_net(img_side, 1, kernel_size=kernel_size,return_coupling=False, out_kernel_side=out_kernel_side).to(device)
 for layer in coupling_network.layers:
     weights_init(layer,w_std=0.1, b_std=0.1, w_mean=.5, b_mean=.5)
 for layer in in_freq_network.layers:
@@ -89,8 +96,8 @@ for step in range(training_steps):
     mask  = torch.tensor(list(map(generator.mask_pro, sd))).float()
 
     # Produce coupling
-    coupling = coupling_network(torch.tensor(batch).unsqueeze(1).float())
-    in_freq = in_freq_network(torch.tensor(batch).unsqueeze(1).float()) 
+    coupling = coupling_network(torch.tensor(batch).to(device).unsqueeze(1).float())
+    in_freq = in_freq_network(torch.tensor(batch).to(device).unsqueeze(1).float()) 
     in_freq *= .1
 
     # Run dynamics
