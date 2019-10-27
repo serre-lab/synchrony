@@ -154,7 +154,7 @@ class kura_torch(object):
         if initial_frequency is not None:
             self.in_frq = initial_frequency
         else:
-            self.in_frq = torch.zeros((self.batch, self.N))
+            self.in_frq = torch.zeros((self.batch, self.N)).to(self.phase.device)
 
     #def set_eps(self, updating_rate=None):
     #    if updating_rate is not None:
