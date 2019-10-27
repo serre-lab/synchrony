@@ -98,7 +98,6 @@ class big_net(nn.Module):
         batch_size = x.shape[0]
         for l, layer in enumerate(self.layers):
             x = layer(x)
-        
         if not self.return_coupling: 
            return x.mean(1).view(batch_size, -1)
         else:
@@ -108,10 +107,10 @@ class big_net(nn.Module):
                 x = x - means.unsqueeze(1)
                 x = x.view(batch_size, x.shape[1], -1)
                 stds = stds.view(batch_size, -1)
-                return torch.einsum('bci, bcj->bcij', x, x).mean(1) / torch.einsum('bi,bj->bij',stds,stds) * self.kernel_mask
+                return torch.einsum('bci, bcj->bcij', x, x).mean(1) / torch.einsum('bi,bj->bij',stds,stds) * self.kernel_mask.to(x.device)
             else:
                 x = x.view(batch_size, x.shape[1], -1)
-                return torch.einsum('bci, bcj->bcij', x, x).mean(1) * self.kernel_mask
+                return torch.einsum('bci, bcj->bcij', x, x).mean(1) * self.kernel_mask.to(x.device)
 
 class net_linear(nn.Module):
     def __init__(self, in_features, out_features):

@@ -308,7 +308,7 @@ class displayer(object):
             self.masks = None
         return copy.deepcopy(self.masks)
 
-    def compute_properties(self):
+    def compute_properties(self, eta=.5):
         if self.phases is not None:
             if self.masks is None:
                 self.fps = loss_func_ex.frame_pt_np(self.phases)
@@ -320,7 +320,7 @@ class displayer(object):
                 self.inps = loss_func_ex.inp_btw_groups_np(self.phases, self.masks)
                 #self.chs = loss_func_ex.coh_btw_groups_np(self.phases, self.masks)
                 self.abs = loss_func_ex.abs_angle_diffs_np(self.phases)
-                self.matt, self.chs, self.fps = loss_func_ex.matt_loss_np(self.phases, self.masks)
+                self.matt, self.chs, self.fps = loss_func_ex.matt_loss_np(self.phases, self.masks, eta=eta)
 
             assert len(self.fps.shape) == 1
             assert len(self.inps.shape) == 1

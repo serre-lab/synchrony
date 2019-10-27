@@ -19,7 +19,8 @@ import ipdb
 
 if len(sys.argv) > 1:
     device_num = sys.argv[1]
-    device = 'cuda:{}'.device_num
+    device = 'cuda:{}'.format(device_num)
+    eta = float(sys.argv[2])
 else:
     device = 'cpu'
 
@@ -30,7 +31,7 @@ plt.style.use('seaborn-darkgrid')
 
 # Saving directories
 home_dir = os.path.expanduser('~/')
-save_dir = os.path.join(home_dir, 'oscillators')
+save_dir = os.path.join(home_dir, 'oscillators', 'eta{}'.format(eta))
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 
@@ -93,7 +94,7 @@ for step in range(training_steps):
 
     # Get batch
     batch, sd = generator.generate_batch()
-    mask  = torch.tensor(list(map(generator.mask_pro, sd))).float()
+    mask  = torch.tensor(list(map(generator.mask_pro, sd))).float().to(device)
 
     # Produce coupling
     coupling = coupling_network(torch.tensor(batch).to(device).unsqueeze(1).float())
@@ -101,23 +102,23 @@ for step in range(training_steps):
     in_freq *= .1
 
     # Run dynamics
-    osci.phase_init()
+    osci.phase_init(device=device)
     phase_list, _ = osci.evolution(coupling, steps=episodes, anneal=anneal,in_freq=in_freq, record=True, record_torch=True)
 
     # Calculate loss
     full_loss = 0
     for t in range(episodes):
-        loss, synch, desynch = loss_func(phase_list[t], mask, eta=0.5)
+        loss, synch, desynch = loss_func(phase_list[t], mask, eta=eta)
         full_loss += (t+1)**2 * loss
     full_loss /= float(episodes)
-    full_loss_history.append(full_loss.data.numpy())
+    full_loss_history.append(full_loss.data.cpu().numpy())
 
     # Calculate gradients and backpropagate
     full_loss.backward()
     train_op.step()
 
     if step % plot_when == 0:
-        loss_history.append([loss.data.numpy(), synch.data.numpy(), desynch.data.numpy()])
+        loss_history.append([loss.data.cpu().numpy(), synch.data.cpu().numpy(), desynch.data.cpu().numpy()])
         plt.plot(np.array(loss_history))
         plt.legend(['Total', 'Synchrony Loss', 'Desynchrony Loss'],
                fontsize=8)
@@ -133,21 +134,21 @@ for step in range(training_steps):
             fig, axes = plt.subplots(4,4)
             name = 'coupling' if n == 0 else 'int_freq'
             for a, ax in enumerate(axes.reshape(-1)):
-                kernel = net.layers[0].weight[a,...].view((kernel_size, kernel_size)).data.numpy()
+                kernel = net.layers[0].weight[a,...].view((kernel_size, kernel_size)).data.cpu().numpy()
                 ax.imshow(kernel)
                 #if a == 15:
                 #    ax.colorbar(kernel)
             plt.savefig(os.path.join(save_dir, name + '_kernels.png'))
             plt.close()
 
-    print('STEPS: ' + str(step).ljust(4) + '--------------' + str(loss.data.numpy()))
+    print('STEPS: ' + str(step).ljust(4) + '--------------' + str(loss.data.cpu().numpy()))
 
     # Test and display
     if step % gif_when == 0:
-        osci.phase_init()
+        osci.phase_init(device=device)
         phase_list, freqs_list = osci.evolution(coupling, steps=episodes, record=True, show=True, test=True, anneal=anneal, in_freq=in_freq)
         display.set_phases(np.array(phase_list)[:,0,:])
-        display.set_masks(np.expand_dims(mask.data.numpy()[0,:], 0))
-        display.compute_properties()
+        display.set_masks(np.expand_dims(mask.data.cpu().numpy()[0,:], 0))
+        display.compute_properties(eta=eta)
         display.animate_evol_compare(img_side, img_side, compare=batch[0,...], save_name=save_name + '_' + str(step))
         display.phase_evol(save_name=save_name + '_' + str(step))

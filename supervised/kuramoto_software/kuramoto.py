@@ -142,11 +142,11 @@ class kura_torch(object):
         self.in_frq = torch.zeros_like(self.phase)
         self.delta = torch.zeros_like(self.phase)
 
-    def phase_init(self, initial_phase=None):
+    def phase_init(self, initial_phase=None, device='cpu'):
         if initial_phase is not None:
-            self.phase = initial_phase
+            self.phase = initial_phase.to(device)
         else:
-            self.phase = torch.rand(self.batch, self.N) * 2 * np.pi
+            self.phase = (torch.rand(self.batch, self.N) * 2 * np.pi).to(device)
         initial_phase = copy.deepcopy(self.phase)
         return initial_phase
 
@@ -181,8 +181,8 @@ class kura_torch(object):
         return self.phase, self.delta
 
     def evolution(self, coupling, steps=1, record=False, show=False, test=False, anneal=False, in_freq=None, record_torch=False):
-        phases_list = [self.phase] if record_torch else [self.phase.data.numpy()]
-        freqs_list = [self.delta] if record_torch else [self.delta.data.numpy()]
+        phases_list = [self.phase] if record_torch else [self.phase.data.cpu().numpy()]
+        freqs_list = [self.delta] if record_torch else [self.delta.data.cpu().numpy()]
         self.eps = self.eps_init
         self.frequency_init(in_freq)
         if show:
@@ -193,8 +193,8 @@ class kura_torch(object):
                     phases_list.append(new)
                     freqs_list.append(freq)
                 else:
-                    phases_list.append(new.data.numpy())
-                    freqs_list.append(freq.data.numpy())
+                    phases_list.append(new.data.cpu().numpy())
+                    freqs_list.append(freq.data.cpu().numpy())
         else:
             for i in range(steps):
                 new, freq = self._update(coupling, test)
@@ -203,8 +203,8 @@ class kura_torch(object):
                     phases_list.append(new)
                     freqs_list.append(freq)
                 else:
-                    phases_list.append(new.data.numpy())
-                    freqs_list.append(freq.data.numpy())
+                    phases_list.append(new.data.cpu().numpy())
+                    freqs_list.append(freq.data.cpu().numpy())
         try:
             if record:
                 return phases_list, freqs_list

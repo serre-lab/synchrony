@@ -3,7 +3,7 @@ import torch
 import ipdb
 
 
-def matt_loss_torch(phase, mask, eta=.5):
+def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Get image parameters
 
     # Pixels per group
