@@ -67,7 +67,8 @@ loss_func   = loss_func_ex.matt_loss_torch
 
 # How frequently to report results
 plot_when = 5
-gif_when  = 50
+make_gif = False
+gif_when  = 1
 
 #Initialize network
 coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_side=out_kernel_side).to(device)
@@ -144,7 +145,7 @@ for step in range(training_steps):
     print('STEPS: ' + str(step).ljust(4) + '--------------' + str(loss.data.cpu().numpy()))
 
     # Test and display
-    if step % gif_when == 0:
+    if step % gif_when == 0 and make_gif:
         osci.phase_init(device=device)
         phase_list, freqs_list = osci.evolution(coupling, steps=episodes, record=True, show=True, test=True, anneal=anneal, in_freq=in_freq)
         display.set_phases(np.array(phase_list)[:,0,:])
