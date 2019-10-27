@@ -33,20 +33,21 @@ model_name = '64_oscis_optim'
 save_name =  os.path.join(save_dir, model_name)
 
 # Side of image
-img_side = 10
+img_side = 16
 # Polyomino type
-n = 3
+n = 4
 # Number of polyominoes
-num_polys = 2
+num_polys = 3
 # Batch Size
 batch_size=64
 
 # Data generator
-generator = polyomino_scenes(n, img_side, num_polys, batch_size)
+generator = polyomino_scenes(n, img_side, num_polys, batch_size, rotation=False, noisy=True)
 
 # Model parameters
 learning_rate = 1e-2
 training_steps = 5000
+kernel_size=5
 
 # Dynamics duration
 episodes = 100
@@ -58,12 +59,11 @@ loss_func   = loss_func_ex.matt_loss_torch
 
 # How frequently to report results
 plot_when = 5
-gif_when  = 100
-effect = 2
+gif_when  = 50
 
 #Initialize network
-coupling_network = big_net(img_side, 1, kernel_size=3, return_coupling=True, normalize_output=False)
-in_freq_network = big_net(img_side, 1, kernel_size=3,return_coupling=False)
+coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_size=5)
+in_freq_network = big_net(img_side, 1, kernel_size=kernel_size,return_coupling=False, out_kernel_size=5)
 for layer in coupling_network.layers:
     weights_init(layer,w_std=0.1, b_std=0.1, w_mean=.5, b_mean=.5)
 for layer in in_freq_network.layers:
@@ -121,7 +121,17 @@ for step in range(training_steps):
         plt.title('Time-averaged loss')
         plt.savefig(os.path.join(save_dir, 'time_averaged_loss.png'))
         plt.close()
-       
+
+        for n, net in enumerate([coupling_network, in_freq_network]):
+            fig, axes = plt.subplots(4,4)
+            name = 'coupling' if n == 0 else 'int_freq'
+            for a, ax in enumerate(axes.reshape(-1)):
+                kernel = net.layers[0].weight[a,...].view((kernel_size, kernel_size)).data.numpy()
+                ax.imshow(kernel)
+                #if a == 15:
+                #    ax.colorbar(kernel)
+            plt.savefig(os.path.join(save_dir, name + '_kernels.png'))
+            plt.close()
 
     print('STEPS: ' + str(step).ljust(4) + '--------------' + str(loss.data.numpy()))
 

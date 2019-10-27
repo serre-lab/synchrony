@@ -9,14 +9,14 @@ def matt_loss_torch(phase, mask, eta=.5):
     # Pixels per group
     num_group_el = mask.sum(-1)
     # Number of groups
-    num_groups = (num_group_el > 0).sum(1).unsqueeze(1).float()
+    num_groups = (num_group_el > 0).sum(1).float()
     # Normalization factor for each group, even if empty
     per_group_norm = torch.where(num_group_el == 0, torch.ones_like(num_group_el), num_group_el)
     # Image size
     img_size = phase.shape[1]
     # Mask phase: dim 1 is group index
     masked_phase = phase.unsqueeze(1) * mask
-    # Group real part
+    # Group real part. Note that the cosine sum is adjusted to account for erroneous cosine(0) from the mask
     group_real = (torch.cos(masked_phase).sum(-1) - (img_size - num_group_el)) / per_group_norm
     # Group imag part
     group_imag = torch.sin(masked_phase).sum(-1) / per_group_norm
@@ -43,7 +43,7 @@ def matt_loss_torch(phase, mask, eta=.5):
     group_phase_diffs = desynch_mask * torch.abs(torch.cos(group_phase.unsqueeze(1) - group_phase.unsqueeze(2)))**2
 
     # Desynch loss is frame potential between groups normalized to be between 0 and 1
-    desynch_loss = (group_phase_diffs.sum((1,2)) / num_groups**2 - (1/ num_groups)).mean()
+    desynch_loss = ((group_phase_diffs.sum((1,2)) - num_groups) / (num_groups**2 - num_groups)).mean()
 
     # Total loss is convex combination of the two losses
     tot_loss = eta*synch_loss + (1-eta)*desynch_loss

@@ -81,12 +81,14 @@ def rank(n):
     return unique(concat_map(new_polys, rank(n - 1)))
 
 class polyomino_scenes(object):
-    def __init__(self, n, img_side, num_objects, batch_size, rotation=True):
+    def __init__(self, n, img_side, num_objects, batch_size, rotation=True, noisy=False):
+        # TODO: Rotation doesn't work yet
         self.n = n
         self.img_side = img_side
         self.num_objects = num_objects
         self.batch = batch_size
         self.rotation = rotation
+        self.noisy    = noisy
         self.n_ominoes = self.generate_free_polyominoes(self.n)
         self.num_n_ominoes = len(self.n_ominoes)
 
@@ -133,7 +135,7 @@ class polyomino_scenes(object):
             for n in range(self.num_objects - 1):
                 ind = np.random.randint(len(self.n_ominoes))
                 poly = self.n_ominoes[ind]
-                overlap = True
+                overlap=True
                 while overlap:
                     template = bgrnd.copy()
                     if self.rotation:
@@ -148,8 +150,11 @@ class polyomino_scenes(object):
                         # key = 'diff_group_{}'.format(n - num_same + 1) if n >= num_same - 1 else 'same_group'
                         dicts[str(ind)].extend(list(map(self._coord2idx, self.convert_coords(global_coords))))
                 canvas += template
-            batch.append(canvas)
+
             bgrnd_coords = np.where(canvas == 0.0)
+            if self.noisy:
+                canvas = np.where(canvas == 0.0, .25*np.random.rand(self.img_side, self.img_side), canvas)
+            batch.append(canvas)
             dicts['bgrnd'].extend(list(map(self._coord2idx, np.transpose(bgrnd_coords))))
             grouping.append(dicts)
         return np.array(batch), grouping

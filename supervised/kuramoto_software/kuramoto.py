@@ -43,9 +43,9 @@ class kura_np(object):
         initial_phase = copy.deepcopy(self.phase)
         return initial_phase
 
-    def frequency_init(self, initial_frequency=None):
-        if initial_frequency is not None:
-            self.in_frq = initial_frequency
+    def frequency_init(self, intrinsic_frequency=None):
+        if intrinsic_frequency is not None:
+            self.in_frq = intrinsic_frequency
         else:
             self.in_frq = np.zeros((self.batch, self.N))
 
@@ -79,13 +79,15 @@ class kura_np(object):
         freq = copy.deepcopy(self.delta)
         return new_phase, freq
 
-    def evolution(self, steps=1, record=False, show=False, anneal=0):
+    def evolution(self, steps=1, record=False, show=False, anneal=False, int_freq=None):
         phases_list = [copy.deepcopy(self.phase)]
         freqs_list = [copy.deepcopy(self.delta)]
+        self.eps = self.eps_init
+        self.frequency_init(int_freq)
         if show:
             for i in tqdm(range(steps)):
                 new, freq = self._update()
-                self.eps_anneal(i, steps, anneal)
+                self.eps_anneal(i, steps, rate=float(anneal))
                 phases_list.append(new)
                 freqs_list.append(freq)
         else:
@@ -178,7 +180,7 @@ class kura_torch(object):
             self.phase = self.phase % (2 * np.pi)
         return self.phase, self.delta
 
-    def evolution(self, coupling, steps=1, record=False, show=False, test=False, anneal=0, in_freq=None, record_torch=False):
+    def evolution(self, coupling, steps=1, record=False, show=False, test=False, anneal=False, in_freq=None, record_torch=False):
         phases_list = [self.phase] if record_torch else [self.phase.data.numpy()]
         freqs_list = [self.delta] if record_torch else [self.delta.data.numpy()]
         self.eps = self.eps_init
@@ -186,7 +188,7 @@ class kura_torch(object):
         if show:
             for i in tqdm(range(steps)):
                 new, freq = self._update(coupling, test)
-                self.eps_anneal(i, steps, anneal)
+                self.eps_anneal(i, steps, rate=float(anneal))
                 if record_torch:
                     phases_list.append(new)
                     freqs_list.append(freq)
