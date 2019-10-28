@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import os, sys
 import argparse
 import ipdb
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--device', default='cpu')
@@ -42,7 +43,7 @@ model_name = '64_oscis_optim'
 save_name =  os.path.join(save_dir, model_name)
 
 # Side of image
-img_side = 8
+img_side = 16
 # Polyomino type
 n = 3
 # Number of polyominoes
@@ -54,8 +55,9 @@ batch_size=64
 generator = polyomino_scenes(n, img_side, num_polys, batch_size, rotation=False, noisy=True)
 
 # Model parameters
-learning_rate = 1e-3
+learning_rate = 1e-2
 training_steps = 5000
+init_steps     = 1600
 kernel_size=5
 out_kernel_side=None
 
@@ -78,13 +80,35 @@ if args.device is not 'cpu':
 else:
     device = args.device
 #coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_side=out_kernel_side).to(device)
-coupling_network = deep_net(img_side, 2,2)
+coupling_network = deep_net(img_side, 1,1, kernel_size=kernel_size, pretrained=True).to(device)
+ipdb.set_trace()
 in_freq_network = big_net(img_side, 1, kernel_size=kernel_size,return_coupling=False, out_kernel_side=out_kernel_side).to(device)
-#for layer in coupling_network.layers:
-#    weights_init(layer,w_std=0.1, b_std=0.1, w_mean=.5, b_mean=.5)
-#for layer in in_freq_network.layers:
-#    weights_init(layer,w_std=.1, b_std=.1, w_mean=2.0, b_mean=2.0)
-# Display object
+
+# Initialize Coupling Net
+#target_mean = 0.0
+#target_std  = 1e-2
+#init_batch_size = 128
+#init_optim = torch.optim.Adam(coupling_network.parameters(), lr=1e-4)
+#init_loss_history = []
+#init_show_every = 25
+#print('RUNNING INITIALIZATION')
+#for steps in tqdm(range(init_steps)):
+#   batch, _ = generator.generate_batch() 
+#   batch = torch.tensor(batch).to(device).unsqueeze(1).float()
+#   coupling = coupling_network.forward(batch)
+#   empirical_mean = coupling.mean()
+#   empirical_std  = coupling.std()
+#
+#   loss = .5*(empirical_mean - target_mean)**2 + .5*(empirical_std - target_std)**2
+#   init_loss_history.append(loss.data.cpu().numpy())
+#   if steps % init_show_every == 0: 
+#       print('Initialization loss: {}. Empirical Mean: {} Empirical std: {}'.format(init_loss_history[-1], empirical_mean.data.cpu().numpy(), empirical_std.data.cpu().numpy()))
+#       plt.plot(init_loss_history)
+#       plt.title('Initialization Loss')
+#       plt.savefig(os.path.join(save_dir, 'init_loss.png'))
+#   loss.backward()
+#   init_optim.step()
+
 display = kv.displayer()
 
 # Kuramoto object
@@ -96,6 +120,7 @@ parameters = set()
 for net in [coupling_network, in_freq_network]: parameters |= set(net.parameters())
 train_op = torch.optim.Adam(coupling_network.parameters(), lr=learning_rate)
 
+init_phase = 2*np.pi*torch.rand((batch_size, img_side**2))
 # Run traning
 for step in range(training_steps):
     train_op.zero_grad()
@@ -111,13 +136,14 @@ for step in range(training_steps):
     in_freq = None
 
     # Run dynamics
-    osci.phase_init(device=device)
+    osci.phase_init(init_phase, device=device)
     phase_list, _ = osci.evolution(coupling, steps=episodes, anneal=anneal,in_freq=in_freq, record=True, record_torch=True)
 
     # Calculate loss
     time_loss = 0
     for t in range(episodes):
-        loss, synch, desynch = loss_func(phase_list[t], mask, eta=args.eta)
+        #loss, synch, desynch = loss_func(phase_list[t], mask, eta=args.eta, desynch_type='COS')
+        loss, synch, desynch = loss_func(phase_list[t], mask)
         time_loss += (t+1)**2 * loss
     time_loss /= float(episodes)
     time_loss_history.append(time_loss.data.cpu().numpy())
@@ -143,12 +169,15 @@ for step in range(training_steps):
         plt.savefig(os.path.join(save_dir, 'time_averaged_loss.png'))
         plt.close()
 
-        fig, axes = plt.subplots(img_side,img_side) 
+        fig, axes = plt.subplots(img_side,img_side, figsize=(10., 10.)) 
         min_cpl = coupling[0].min().data.cpu().numpy()
         max_cpl = coupling[0].max().data.cpu().numpy()
         for a, ax in enumerate(axes.reshape(-1)):
             cpl = coupling[0,a,...].data.cpu().numpy().reshape(img_side, img_side)
             ax.imshow(cpl, cmap='gray', vmin=min_cpl, vmax=max_cpl)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.grid(False)
         #cbar_ax = fig.add_axes([0.9, 0.15, 0.05, 0.7])
         #fig.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=min_cpl, vmax=max_cpl)), cmap='gray', cax=cbar_ax) 
         plt.savefig(os.path.join(save_dir, 'example_coupling.png'))

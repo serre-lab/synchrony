@@ -2,7 +2,18 @@ import torch
 import torch.nn as nn
 import numpy as np
 from scipy.linalg import toeplitz
+from skimage.filters import gabor_kernel as gk
 import ipdb
+
+def gabor_filters(num_orientations=8):
+    gabor_list = [gk(frequency=.3, theta=k*2.*np.pi / num_orientations, sigma_x=2, sigma_y=2, n_stds=1).real for k in range(num_orientations)]
+    m = np.max([gabor.shape for gabor in gabor_list])
+    for g, gabor in enumerate(gabor_list):
+        if gabor.shape[0] == m: continue
+        else:
+            gabor_list[g] = np.pad(gabor, m-gabor.shape[0], m-gabor.shape[1])
+    return gabor_list
+        
 
 class net(nn.Module):
     def __init__(self):
@@ -112,19 +123,24 @@ class big_net(nn.Module):
                 return torch.einsum('bci, bcj->bcij', x, x).mean(1) * self.kernel_mask.to(x.device)
 
 class deep_net(nn.Module):
-    def __init__(self, img_side, num_conv_layers, num_fc_layers, kernel_size=5, num_conv_features=16, num_fc_features=128, out_kernel_side=None):
+    def __init__(self, img_side, num_conv_layers, num_fc_layers, kernel_size=5, num_conv_features=16, num_fc_features=128, pretrained=False, bias=True):
         super(deep_net, self).__init__()
 
+        if pretrained:
+            assert num_conv_layers==1
+            assert kernel_size==5
         self.img_side = img_side
 
         num_conv_features = [1] + (num_conv_layers + 1) * [num_conv_features]
         num_fc_features = [self.img_side**2 * num_conv_features[-1]] + (num_fc_layers) * [num_fc_features] + [self.img_side**4]
         pad_size = int((kernel_size / 2.0))
-        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_conv_features[i], num_conv_features[i+1], kernel_size, padding=pad_size) for i in range(num_conv_layers)])
+        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_conv_features[i], num_conv_features[i+1], kernel_size, padding=pad_size, bias=bias) for i in range(num_conv_layers)])
+        if pretrained:
+            self.conv_layers[0].weight.data = torch.tensor(gabor_filters(num_conv_features[1])).unsqueeze(1).float()
+            self.conv_layers[0].requires_grad = False
+            
         self.fc_layers = torch.nn.ModuleList([torch.nn.Linear(num_fc_features[i], num_fc_features[i+1]) for i in range(num_fc_layers + 1)])
  
-        ipdb.set_trace()
-        
     def forward(self, x):
         batch_size = x.shape[0]
         for layer in self.conv_layers:
@@ -176,8 +192,10 @@ def mask_pro(group_dict):
 
 
 if __name__ == '__main__':
-    x = torch.rand(1, 1, 4)
-    network = net()
-    network.parameters()
-    corr = network(x)
+    my_net = deep_net(16, 1, 3, num_conv_features=16, bias=False, pretrained=True)
+    ipdb.set_trace()
+    #x = torch.rand(1, 1, 4)
+    #network = net()
+    #network.parameters()
+    #corr = network(x)
     print(corr)
