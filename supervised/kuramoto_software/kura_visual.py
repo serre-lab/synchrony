@@ -7,8 +7,7 @@ import numpy as np
 import sys
 import loss_func_ex
 import copy
-from colorsys import hls_to_rgb
-import ipdb
+
 
 class displayer(object):
     """
@@ -17,11 +16,12 @@ class displayer(object):
     def __init__(self, phases=None, freqs=None, masks=None):
         if id(phases) != id(None) & id(freqs) != id(None):
             self.phases = np.squeeze(np.array(phases, dtype=np.float32))
+            self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
             self.freqs = np.squeeze(np.array(freqs, dtype=np.float32))
 
             if masks is not None:
                 self.fps = loss_func_ex.fpt_btw_groups_np(self.phases, masks)
-                self.inps = loss_func_ex.inp_btw_groups_np(self.phases, masks)
+                self.inps = loss_func_ex.inp_btw_groups_np2(self.phases, masks)
                 self.chs = loss_func_ex.coh_btw_groups_np(self.phases, masks)
                 self.abs = loss_func_ex.abs_angle_diffs_np(self.phases)
             else:
@@ -48,7 +48,6 @@ class displayer(object):
             self.masks = masks
 
     def animate_evol_compare(self, nrows, ncols, compare, save_name=None):
-        self.sq_phases = self._convert2square(self.phases[0],nrows=nrows,ncols=ncols)
         if self.masks is None:
             raise ValueError('There are no masks provided')
 
@@ -66,14 +65,12 @@ class displayer(object):
         ax_im = fig.add_subplot(gs1[1])
         im = ax_im.imshow(self._convert2square(self.phases[0], ncols=ncols, nrows=nrows),
                           cmap='hsv', animated=True)
-
-        #cbar = plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
-        #                                      cmap='hsv'),
-        #                    ax=ax_im,
-        #                    ticks=[np.pi / 2, np.pi, np.pi * 3 / 2],
-        #                    fraction=0.05)
-        #cbar.ax.set_yticklabels(('0.5$\pi$', '$\pi$', '1.5$\pi$'))
-
+        cbar = plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
+                                              cmap='hsv'),
+                            ax=ax_im,
+                            ticks=[np.pi / 2, np.pi, np.pi * 3 / 2],
+                            fraction=0.05)
+        cbar.ax.set_yticklabels(('0.5$\pi$', '$\pi$', '1.5$\pi$'))
         ax_im.axis('off')
         gs1.tight_layout(fig, rect=[0, 0, 0.5, 1])
 
@@ -123,7 +120,7 @@ class displayer(object):
 
     def animate_evol(self, nrows, ncols, save_name=None):
         fig = plt.figure()
- 
+
         gs1 = gridspec.GridSpec(1, 1)
         gs2 = gridspec.GridSpec(1, 1)
         gs3 = gridspec.GridSpec(1, 1)
@@ -236,7 +233,7 @@ class displayer(object):
     def phase_evol(self, save_name=None):
         plt.style.use('seaborn-darkgrid')
         if self.masks is not None:
-            group_num = int((self.masks.sum(-1) > 0).sum(-1))
+            group_num = self.masks.shape[1]
             annot_bool = [True] * group_num
             colorlib = ['orange', 'c', 'g', 'm', 'r', 'y', 'b']
 
@@ -244,7 +241,7 @@ class displayer(object):
             colors = []
             for num in range(group_num):
                 try:
-                    colors.append(colorlib[color_counter])
+                    colors.append('C{}'.format(num))
                     color_counter += 1
                 except ValueError:
                     print('Need more colors!')
@@ -291,6 +288,7 @@ class displayer(object):
             self.phases = np.squeeze(np.array(phases, dtype=np.float32))
         else:
             self.phases = None
+        self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
         return copy.deepcopy(self.phases)
 
     def set_freqs(self, freqs=None):
@@ -308,7 +306,7 @@ class displayer(object):
             self.masks = None
         return copy.deepcopy(self.masks)
 
-    def compute_properties(self, eta=.5):
+    def compute_properties(self):
         if self.phases is not None:
             if self.masks is None:
                 self.fps = loss_func_ex.frame_pt_np(self.phases)
@@ -316,11 +314,10 @@ class displayer(object):
                 self.chs = loss_func_ex.coherence_np(self.phases)
                 self.abs = loss_func_ex.abs_angle_diffs_np(self.phases)
             else:
-                #self.fps = loss_func_ex.fpt_btw_groups_np(self.phases, self.masks)
-                self.inps = loss_func_ex.inp_btw_groups_np(self.phases, self.masks)
-                #self.chs = loss_func_ex.coh_btw_groups_np(self.phases, self.masks)
+                self.fps = loss_func_ex.fpt_btw_groups_np(self.phases, self.masks)
+                self.inps = loss_func_ex.inp_btw_groups_np2(self.phases, self.masks)
+                self.chs = loss_func_ex.coh_btw_groups_np(self.phases, self.masks)
                 self.abs = loss_func_ex.abs_angle_diffs_np(self.phases)
-                self.matt, self.chs, self.fps = loss_func_ex.matt_loss_np(self.phases, self.masks, eta=eta)
 
             assert len(self.fps.shape) == 1
             assert len(self.inps.shape) == 1
