@@ -41,7 +41,7 @@ for step in tqdm.tqdm(range(training_step)):
     norm = np.sum(np.arange(1, episodes + 1) ** 2)
 
     for t in range(episodes):
-        loss = lx.exinp_btw_groups_torch2(phase_list[t], training_mask)
+        loss = lx.exinp_btw_groups_torch(phase_list[t], training_mask)
         full_loss += loss * (t**2)
     full_loss = full_loss / norm
     loss_history.append(full_loss.data.numpy())
