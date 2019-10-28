@@ -2,22 +2,6 @@ import numpy as np
 import torch
 import ipdb
 
-def simple_desynch(phase, mask):
-     # Get image parameters
-
-    # Pixels per group
-    num_group_el = mask.sum(-1)
-    # Image size
-    img_size = phase.shape[1]
-    correction = (img_size - num_group_el).sum()
-
-    # Mask phase: dim 1 is group index
-    masked_phase = phase.unsqueeze(1) * mask
-
-    diffs = torch.cos(masked_phase.unsqueeze(1) - masked_phase.unsqueeze(2))
-    loss = diffs.sum() - correction
-
-    return loss, torch.tensor(0), torch.tensor(0)
 
 def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Get image parameters
@@ -58,6 +42,7 @@ def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Phase diffs
     group_phase_diffs = desynch_mask * torch.abs(torch.cos(group_phase.unsqueeze(1) - group_phase.unsqueeze(2)))**2
 
+    # Desynch loss is frame potential between groups normalized to be between 0 and 1
     desynch_loss = ((group_phase_diffs.sum((1,2)) - num_groups) / (num_groups**2 - num_groups)).mean()
 
     # Total loss is convex combination of the two losses
@@ -160,6 +145,37 @@ def inp_btw_groups_np(phase, mask):
     #return np.round(np.exp(np.squeeze(product, axis=2).sum(3).sum(2).sum(1)\
            #/ 2 / [*torch.combinations(torch.arange(osci_num)).shape][0]), 5)
     return np.round(np.squeeze(product, axis=2).sum(3).sum(2).sum(1) / groups_size_sum, 5)
+
+
+def inp_btw_groups_torch(phase, mask, transformation='linear'):
+    # Just without exponential
+    phase = phase.to(device)
+    mask = mask.to(device)
+    groups_size = torch.sum(mask, dim=2)
+    groups_size_mat = torch.matmul(groups_size.unsqueeze(2),
+                                   groups_size.unsqueeze(1))
+    # punish = torch.ones_like(groups_size)
+    # punish[:, 1, :] = 0.1
+    # groups_size_sum = groups_size_mat.sum(2).sum(1) - torch.sum(groups_size ** 2, dim=1)
+
+    masked_sin = (torch.sin(phase.unsqueeze(1)) * mask)
+    masked_cos = (torch.cos(phase.unsqueeze(1)) * mask)
+
+    product = (torch.matmul(masked_sin.unsqueeze(2).unsqueeze(4),
+                            masked_sin.unsqueeze(1).unsqueeze(3)) +
+               torch.matmul(masked_cos.unsqueeze(2).unsqueeze(4),
+                            masked_cos.unsqueeze(1).unsqueeze(3)))
+    diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0)
+    product = product / (groups_size_mat.unsqueeze(3).unsqueeze(4) + 1e-6)
+    if transformation == 'linear':
+        product = product.sum(4).sum(3) * diag_mat
+    elif transformation == 'exponential':
+        product = torch.exp(product.sum(4).sum(3)) * diag_mat
+    else:
+        raise ValueError('transformation not included')
+    product = product.sum(2).sum(1) / torch.abs(torch.sign(product)).sum(2).sum(1)
+
+    return product
 
 
 def exinp_btw_groups_torch(phase, mask):
