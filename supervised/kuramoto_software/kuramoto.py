@@ -156,11 +156,11 @@ class kura_torch(object):
         else:
             self.in_frq = torch.zeros((self.batch, self.N)).to(self.phase.device)
 
-    #def set_eps(self, updating_rate=None):
-    #    if updating_rate is not None:
-    #        self.ep = updating_rate
-    #    else:
-    #        self.ep = 0.1
+    def set_ep(self, updating_rate=None):
+        if updating_rate is not None:
+            self.ep = updating_rate
+        else:
+            self.ep = 0.1
 
     def set_mean_field(self, mean_field=None):
         if mean_field is not None:
