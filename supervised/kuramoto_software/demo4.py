@@ -6,7 +6,7 @@ else:
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     plt.ioff()
-from nets import big_net, weights_init
+from nets import big_net, deep_net, weights_init
 import kuramoto as km
 import kura_visual as kv
 import numpy as np
@@ -54,7 +54,7 @@ batch_size=64
 generator = polyomino_scenes(n, img_side, num_polys, batch_size, rotation=False, noisy=True)
 
 # Model parameters
-learning_rate = 1e-2
+learning_rate = 1e-3
 training_steps = 5000
 kernel_size=5
 out_kernel_side=None
@@ -75,8 +75,10 @@ gif_when  = 1
 #Initialize network
 if args.device is not 'cpu':
     device = 'cuda:{}'.format(args.device)
-
-coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_side=out_kernel_side).to(device)
+else:
+    device = args.device
+#coupling_network = big_net(img_side, 1, kernel_size=kernel_size, return_coupling=True, normalize_output=False, out_kernel_side=out_kernel_side).to(device)
+coupling_network = deep_net(img_side, 2,2)
 in_freq_network = big_net(img_side, 1, kernel_size=kernel_size,return_coupling=False, out_kernel_side=out_kernel_side).to(device)
 #for layer in coupling_network.layers:
 #    weights_init(layer,w_std=0.1, b_std=0.1, w_mean=.5, b_mean=.5)
@@ -169,7 +171,7 @@ for step in range(training_steps):
             fig, axes = plt.subplots(4,4)
             name = 'coupling' if n == 0 else 'int_freq'
             for a, ax in enumerate(axes.reshape(-1)):
-                kernel = net.layers[0].weight[a,...].view((kernel_size, kernel_size)).data.cpu().numpy()
+                kernel = net.conv_layers[0].weight[a,...].view((kernel_size, kernel_size)).data.cpu().numpy()
                 ax.imshow(kernel)
                 #if a == 15:
                 #    ax.colorbar(kernel)

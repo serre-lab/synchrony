@@ -82,7 +82,7 @@ class big_net(nn.Module):
         num_features = [1] + (num_layers + 1) * [num_features]
         minus_one = 0 if kernel_size % 2 == 0 else 1
         pad_size = int((kernel_size - minus_one) / 2.0)
-        self.layers = torch.nn.ModuleList([torch.nn.Conv2d(num_features[i], num_features[i+1], kernel_size, padding=pad_size) for i in range(num_layers)])
+        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_features[i], num_features[i+1], kernel_size, padding=pad_size) for i in range(num_layers)])
 
     def make_kernel_mask(self, out_kernel_side):
         if out_kernel_side is None:
@@ -93,10 +93,9 @@ class big_net(nn.Module):
                 toeplitz_row[(k*self.img_side):(k * self.img_side) + out_kernel_side] = 1.0
             return torch.tensor(toeplitz(toeplitz_row).T).float()
                 
-
     def forward(self, x):
         batch_size = x.shape[0]
-        for l, layer in enumerate(self.layers):
+        for l, layer in enumerate(self.conv_layers):
             x = layer(x)
         if not self.return_coupling: 
            return x.mean(1).view(batch_size, -1)
@@ -111,6 +110,31 @@ class big_net(nn.Module):
             else:
                 x = x.view(batch_size, x.shape[1], -1)
                 return torch.einsum('bci, bcj->bcij', x, x).mean(1) * self.kernel_mask.to(x.device)
+
+class deep_net(nn.Module):
+    def __init__(self, img_side, num_conv_layers, num_fc_layers, kernel_size=5, num_conv_features=16, num_fc_features=128, out_kernel_side=None):
+        super(deep_net, self).__init__()
+
+        self.img_side = img_side
+
+        num_conv_features = [1] + (num_conv_layers + 1) * [num_conv_features]
+        num_fc_features = [self.img_side**2 * num_conv_features[-1]] + (num_fc_layers) * [num_fc_features] + [self.img_side**4]
+        pad_size = int((kernel_size / 2.0))
+        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_conv_features[i], num_conv_features[i+1], kernel_size, padding=pad_size) for i in range(num_conv_layers)])
+        self.fc_layers = torch.nn.ModuleList([torch.nn.Linear(num_fc_features[i], num_fc_features[i+1]) for i in range(num_fc_layers + 1)])
+ 
+        ipdb.set_trace()
+        
+    def forward(self, x):
+        batch_size = x.shape[0]
+        for layer in self.conv_layers:
+            x = layer(x)
+            x = torch.relu(x)
+        x = x.reshape(batch_size, -1)
+        for l, layer in enumerate(self.fc_layers):
+            x = layer(x)
+            x = torch.relu(x) if l < len(self.fc_layers) - 1 else x
+        return x.reshape(batch_size, self.img_side**2, self.img_side**2)
 
 class net_linear(nn.Module):
     def __init__(self, in_features, out_features):
