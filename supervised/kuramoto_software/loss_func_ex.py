@@ -2,6 +2,22 @@ import numpy as np
 import torch
 import ipdb
 
+def simple_desynch(phase, mask):
+     # Get image parameters
+
+    # Pixels per group
+    num_group_el = mask.sum(-1)
+    # Image size
+    img_size = phase.shape[1]
+    correction = (img_size - num_group_el).sum()
+
+    # Mask phase: dim 1 is group index
+    masked_phase = phase.unsqueeze(1) * mask
+
+    diffs = torch.cos(masked_phase.unsqueeze(1) - masked_phase.unsqueeze(2))
+    loss = diffs.sum() - correction
+
+    return loss, torch.tensor(0), torch.tensor(0)
 
 def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Get image parameters
@@ -42,7 +58,6 @@ def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Phase diffs
     group_phase_diffs = desynch_mask * torch.abs(torch.cos(group_phase.unsqueeze(1) - group_phase.unsqueeze(2)))**2
 
-    # Desynch loss is frame potential between groups normalized to be between 0 and 1
     desynch_loss = ((group_phase_diffs.sum((1,2)) - num_groups) / (num_groups**2 - num_groups)).mean()
 
     # Total loss is convex combination of the two losses
