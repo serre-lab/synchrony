@@ -238,3 +238,78 @@ class kura_torch(object):
                    steps,
                    rate=0):
         self.eps = self.eps - rate * float(i) * self.eps / steps
+
+
+class kura_torch2(object):
+    """
+    Add device choice,
+    default batch size if 1
+    """
+    def __init__(self,
+                 oscillator_number,
+                 update_rate=0.1,
+                 device='cpu'):
+        self.N = oscillator_number
+        self.ep = update_rate
+        self.device = device
+
+        self.phase = (torch.rand(1, oscillator_number) * 2 * np.pi).to(self.device)
+        self.in_frq = torch.zeros_like(self.phase).to(self.device)
+        self.delta = torch.zeros_like(self.phase).to(self.device)
+
+    def phase_init(self, batch=1, initial_phase=None):
+        if initial_phase is not None:
+            self.phase = initial_phase.to(self.device)
+        else:
+            self.phase = (torch.rand(batch, self.N) * 2 * np.pi).to(self.device)
+        return True
+
+    def frequency_init(self, batch=1, intrinsic_frequency=None):
+        if intrinsic_frequency is not None:
+            self.in_frq = intrinsic_frequency.to(self.device)
+        else:
+            self.in_frq = torch.zeros(batch, self.N).to(self.device)
+        return True
+
+    def _update(self, coupling):
+        diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
+        # diffs.shape=(batch, osci_num, osci_num)
+        # coupling.shape=(batch, osci_num, osci_num)
+        # 0, B-A, C-A
+        # A-B, 0, C-B
+        # A-C, B-C, 0
+        self.delta = self.ep * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.N - 1))
+        self.phase = self.phase + self.delta
+        return self.phase
+
+    def evolution(self, coupling, steps=1, record=False, show=False, anneal=0):
+        phases_list = [self.phase]
+        if show:
+            for i in tqdm(range(steps)):
+                new = self._update(coupling)
+                self.eps_anneal(i, steps, anneal)
+                phases_list.append(new)
+        else:
+            for i in range(steps):
+                new = self._update(coupling)
+                self.eps_anneal(i, steps, anneal)
+                phases_list.append(new)
+        try:
+            if record:
+                return phases_list
+            else:
+                # only return final phase
+                return self.phase
+        except RuntimeError:
+            print('No updating')
+
+    def eps_anneal(self, i, steps, rate=0):
+        self.ep = self.ep - rate * float(i) * self.ep / steps
+        return True
+
+    def set_ep(self, updating_rate=None):
+        if updating_rate is not None:
+            self.ep = updating_rate
+        else:
+            self.ep = 0.1
+        return True
