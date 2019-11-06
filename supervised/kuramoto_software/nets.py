@@ -84,16 +84,24 @@ class net2(nn.Module):
         return corr * effect
 
 class big_net(nn.Module):
-    def __init__(self, img_side, num_layers, kernel_size=5, num_features=16, return_coupling=False, normalize_output=True, out_kernel_side=None):
+    def __init__(self, img_side, num_conv_layers, kernel_side=5, num_conv_features=16, return_coupling=False, normalize_output=True, out_kernel_side=None, pretrained=False):
         super(big_net, self).__init__()
         self.img_side = img_side
+
+        if pretrained:
+            assert num_conv_layers==1
+
         self.return_coupling = return_coupling
         self.normalize_output = normalize_output
         self.kernel_mask = self.make_kernel_mask(out_kernel_side)
-        num_features = [1] + (num_layers + 1) * [num_features]
-        minus_one = 0 if kernel_size % 2 == 0 else 1
-        pad_size = int((kernel_size - minus_one) / 2.0)
-        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_features[i], num_features[i+1], kernel_size, padding=pad_size) for i in range(num_layers)])
+        num_conv_features = [1] + (num_conv_layers + 1) * [num_conv_features]
+        minus_one = 0 if kernel_side % 2 == 0 else 1
+        pad_size = int((kernel_side - minus_one) / 2.0)
+        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_conv_features[i], num_conv_features[i+1], kernel_side, padding=pad_size) for i in range(num_conv_layers)])
+        if pretrained:
+            self.conv_layers[0].weight.data = torch.tensor(gabor_filters(num_conv_features[1])).unsqueeze(1).float()
+            self.conv_layers[0].requires_grad = False
+
 
     def make_kernel_mask(self, out_kernel_side):
         if out_kernel_side is None:
@@ -123,18 +131,18 @@ class big_net(nn.Module):
                 return torch.einsum('bci, bcj->bcij', x, x).mean(1) * self.kernel_mask.to(x.device)
 
 class deep_net(nn.Module):
-    def __init__(self, img_side, num_conv_layers, num_fc_layers, kernel_size=5, num_conv_features=16, num_fc_features=128, pretrained=False, bias=True):
+    def __init__(self, img_side, num_conv_layers, num_fc_layers, kernel_side=5, num_conv_features=16, num_fc_features=128, pretrained=False, bias=True):
         super(deep_net, self).__init__()
 
         if pretrained:
             assert num_conv_layers==1
-            assert kernel_size==5
+            assert kernel_side==5
         self.img_side = img_side
 
         num_conv_features = [1] + (num_conv_layers + 1) * [num_conv_features]
         num_fc_features = [self.img_side**2 * num_conv_features[-1]] + (num_fc_layers) * [num_fc_features] + [self.img_side**4]
-        pad_size = int((kernel_size / 2.0))
-        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_conv_features[i], num_conv_features[i+1], kernel_size, padding=pad_size, bias=bias) for i in range(num_conv_layers)])
+        pad_size = int((kernel_side / 2.0))
+        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_conv_features[i], num_conv_features[i+1], kernel_side, padding=pad_size, bias=bias) for i in range(num_conv_layers)])
         if pretrained:
             self.conv_layers[0].weight.data = torch.tensor(gabor_filters(num_conv_features[1])).unsqueeze(1).float()
             self.conv_layers[0].requires_grad = False

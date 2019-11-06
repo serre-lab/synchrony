@@ -131,6 +131,7 @@ class kura_torch(object):
     """
     def __init__(self,
                  oscillator_num,
+                 num_regions,
                  update_rate=0.1,
                  mean_field=1,
                  batch_size=1):
@@ -138,6 +139,7 @@ class kura_torch(object):
         self.K = mean_field
         self.batch = batch_size
         self.N = oscillator_num
+        self.rN = self.N / num_regions
         self.phase = torch.rand(batch_size, oscillator_num) * 2
         self.in_frq = torch.zeros_like(self.phase)
         self.delta = torch.zeros_like(self.phase)
@@ -150,11 +152,14 @@ class kura_torch(object):
         initial_phase = copy.deepcopy(self.phase)
         return initial_phase
 
+    def region_init(self, region_indices, img_side):
+        self.region_indices = [np.ravel_multi_index(inds, (img_side, img_side)).reshape(-1) for inds in region_indices]
+
     def frequency_init(self, initial_frequency=None):
         if initial_frequency is not None:
             self.in_frq = initial_frequency
         else:
-            self.in_frq = torch.zeros((self.batch, self.N)).to(self.phase.device)
+            self.in_frq = torch.zeros((self.batch, self.rN)).to(self.phase.device)
 
     def set_ep(self, updating_rate=None):
         if updating_rate is not None:
@@ -168,14 +173,15 @@ class kura_torch(object):
         else:
             self.K = 1
 
-    def _update(self, coupling, test):
-        diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
+    def _update(self, coupling, test, update_indices):
+        phase = self.phase[:,update_indices]
+        diffs = phase.unsqueeze(1) - phase.unsqueeze(2)
         # diffs
         # 0, B-A, C-A
         # A-B, 0, C-B
         # A-C, B-C, 0
-        self.delta = self.eps * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.N - 1.) )
-        self.phase = self.phase + self.delta
+        self.delta = self.eps * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.rN - 1.) )
+        self.phase[:,update_indices] = phase + self.delta
         if test:
             self.phase = self.phase % (2 * np.pi)
         return self.phase, self.delta
@@ -187,24 +193,27 @@ class kura_torch(object):
         self.frequency_init(in_freq)
         if show:
             for i in tqdm(range(steps)):
-                new, freq = self._update(coupling, test)
+                for c, cp in enumerate(coupling): 
+                    #update_indices = None if len(coupling) < 2 else)
+                    self._update(cp, test, self.region_indices[c])
                 self.eps_anneal(i, steps, rate=float(anneal))
                 if record_torch:
-                    phases_list.append(new)
-                    freqs_list.append(freq)
+                    phases_list.append(self.phase)
+                    freqs_list.append(self.delta)
                 else:
-                    phases_list.append(new.data.cpu().numpy())
-                    freqs_list.append(freq.data.cpu().numpy())
+                    phases_list.append(self.phase.data.cpu().numpy())
+                    freqs_list.append(self.delta.data.cpu().numpy())
         else:
             for i in range(steps):
-                new, freq = self._update(coupling, test)
+                for c, cp in enumerate(coupling): 
+                    self._update(cp, test, self.region_indices[c])
                 self.eps_anneal(i, steps, anneal)
                 if record_torch:
-                    phases_list.append(new)
-                    freqs_list.append(freq)
+                    phases_list.append(self.phase)
+                    freqs_list.append(self.delta)
                 else:
-                    phases_list.append(new.data.cpu().numpy())
-                    freqs_list.append(freq.data.cpu().numpy())
+                    phases_list.append(self.phase.data.cpu().numpy())
+                    freqs_list.append(self.delta.data.cpu().numpy())
         try:
             if record:
                 return phases_list, freqs_list

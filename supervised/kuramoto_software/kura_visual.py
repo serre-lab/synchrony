@@ -65,12 +65,12 @@ class displayer(object):
         ax_im = fig.add_subplot(gs1[1])
         im = ax_im.imshow(self._convert2square(self.phases[0], ncols=ncols, nrows=nrows),
                           cmap='hsv', animated=True)
-        cbar = plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
-                                              cmap='hsv'),
-                            ax=ax_im,
-                            ticks=[np.pi / 2, np.pi, np.pi * 3 / 2],
-                            fraction=0.05)
-        cbar.ax.set_yticklabels(('0.5$\pi$', '$\pi$', '1.5$\pi$'))
+        #cbar = plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
+        #                                      cmap='hsv'),
+        #                    ax=ax_im,
+        #                    ticks=[np.pi / 2, np.pi, np.pi * 3 / 2],
+        #                    fraction=0.05)
+        #cbar.ax.set_yticklabels(('0.5$\pi$', '$\pi$', '1.5$\pi$'))
         ax_im.axis('off')
         gs1.tight_layout(fig, rect=[0, 0, 0.5, 1])
 
@@ -315,7 +315,7 @@ class displayer(object):
                 self.abs = loss_func_ex.abs_angle_diffs_np(self.phases)
             else:
                 self.fps = loss_func_ex.fpt_btw_groups_np(self.phases, self.masks)
-                self.inps = loss_func_ex.inp_btw_groups_np2(self.phases, self.masks)
+                self.inps = loss_func_ex.inp_btw_groups_np(self.phases, self.masks)
                 self.chs = loss_func_ex.coh_btw_groups_np(self.phases, self.masks)
                 self.abs = loss_func_ex.abs_angle_diffs_np(self.phases)
 

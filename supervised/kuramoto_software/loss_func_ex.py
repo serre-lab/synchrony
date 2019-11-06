@@ -147,7 +147,7 @@ def inp_btw_groups_np(phase, mask):
     return np.round(np.squeeze(product, axis=2).sum(3).sum(2).sum(1) / groups_size_sum, 5)
 
 
-def inp_btw_groups_torch(phase, mask, transformation='linear'):
+def inp_btw_groups_torch(phase, mask, transformation='linear', device='cpu'):
     # Just without exponential
     phase = phase.to(device)
     mask = mask.to(device)
@@ -168,14 +168,14 @@ def inp_btw_groups_torch(phase, mask, transformation='linear'):
     diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0)
     product = product / (groups_size_mat.unsqueeze(3).unsqueeze(4) + 1e-6)
     if transformation == 'linear':
-        product = product.sum(4).sum(3) * diag_mat
+        product = product.sum(4).sum(3) * diag_mat.to(device)
     elif transformation == 'exponential':
-        product = torch.exp(product.sum(4).sum(3)) * diag_mat
+        product = torch.exp(product.sum(4).sum(3)) * diag_mat.to(device)
     else:
         raise ValueError('transformation not included')
     product = product.sum(2).sum(1) / torch.abs(torch.sign(product)).sum(2).sum(1)
 
-    return product
+    return product.mean(), product.mean(), product.mean()
 
 
 def exinp_btw_groups_torch(phase, mask):

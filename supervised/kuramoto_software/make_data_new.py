@@ -11,7 +11,10 @@ from operator import itemgetter
 from itertools import imap, groupby, chain, imap
 from sys import argv
 from array import array
+import wget
 import ipdb
+import os
+import subprocess
 
 def concat_map(func, it):
     return list(chain.from_iterable(imap(func, it)))
@@ -225,9 +228,21 @@ def mask_pro(group_dict, img_side):
         masks.append(mask)
     return masks
 
-if __name__ == '__main__':
-    generator = polyomino_scenes(5, 16, 4, 1, True)
-    canvas, dicts = generator.generate_batch()
+def download_textures(save_dir):
+    print('Downloading textures')
+    url = 'https://www.robots.ox.ac.uk/~vgg/data/dtd/download/dtd-r1.0.1.tar.gz'
+    tar_path= os.path.join(save_dir, 'dtd.tar.gz')
+    if not os.path.exists(tar_path):
+        wget.download(url, tar_path)
+    subprocess.call('tar xvzf {} -C {}&'.format(tar_path, save_dir), shell=True)
 
-    print(canvas)
-    print('\n'.join(map(str, dicts)))
+if __name__ == '__main__':
+    save_dir = os.path.join(os.path.expanduser('~'), 'data')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    download_textures(save_dir)
+    #generator = polyomino_scenes(5, 16, 4, 1, True)
+    #canvas, dicts = generator.generate_batch()
+
+    #print(canvas)
+    #print('\n'.join(map(str, dicts)))
