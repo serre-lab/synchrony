@@ -171,6 +171,33 @@ def weights_init(m, w_mean=0.0, w_std=0.1, b_mean=0.0, b_std=0.01):
         nn.init.uniform_(m.bias, b_mean, b_std)
 
 
+class simple_conv(nn.Module):
+    def __init__(self):
+        super(simple_conv4, self).__init__()
+        self.conv1_k3 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.conv2_k3 = nn.Conv2d(32, 16, kernel_size=3, padding=1)
+        self.conv3_k3 = nn.Conv2d(16, 8, kernel_size=3, padding=1)
+        self.conv1_k5 = nn.Conv2d(1, 32, kernel_size=5, padding=2)
+        self.conv2_k5 = nn.Conv2d(32, 16, kernel_size=5, padding=2)
+        self.conv3_k5 = nn.Conv2d(16, 8, kernel_size=5, padding=2)
+        self.fc = nn.Linear(1024, 16384)
+
+    def forward(self, input):
+        conv1_k3 = self.conv1_k3(input.reshape(-1, 1, 16, 16))
+        conv1_k5 = self.conv1_k5(input.reshape(-1, 1, 16, 16))
+        conv2_k3 = self.conv2_k3(conv1_k3)
+        conv2_k5 = self.conv2_k5(conv1_k5)
+        conv3_k3 = self.conv3_k3(conv2_k3)
+        conv3_k5 = self.conv3_k5(conv2_k5)
+        # conv.shape=(batch, channels, H, W)
+        conv = torch.empty(input.shape[0], 16, 16, 16).to(device=input.device)
+        for c in range(8):
+            conv[:, c * 2, ...] = conv3_k3[:, c, ...]
+            conv[:, c * 2 + 1, ...] = conv3_k5[:, c, ...]
+        fc = self.fc(torch.sigmoid(conv.reshape(-1, 1024)))
+        return fc.reshape(-1, 256, 256)
+
+
 def convert2twod(img_batch):
     img_side = img_batch.shape[-1]
     output = torch.reshape(torch.tensor(img_batch), [-1, 1, img_side, img_side]).float()
