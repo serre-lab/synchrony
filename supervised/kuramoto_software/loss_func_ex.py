@@ -178,12 +178,12 @@ def inp_btw_groups_torch(phase, mask, transformation='linear', device='cpu'):
     return product.mean(), product.mean(), product.mean()
 
 
-def exinp_btw_groups_torch(phase, mask):
+def exinp_btw_groups_torch(phase, mask, device):
+    phase = phase.to(device)
+    mask = mask.to(device)
     groups_size = torch.sum(mask, dim=2)
     groups_size_mat = torch.matmul(groups_size.unsqueeze(2),
                                    groups_size.unsqueeze(1))
-    # punish = torch.ones_like(groups_size)
-    # punish[:, 1, :] = 0.1
     # groups_size_sum = groups_size_mat.sum(2).sum(1) - torch.sum(groups_size ** 2, dim=1)
 
     masked_sin = (torch.sin(phase.unsqueeze(1)) * mask)
@@ -193,17 +193,10 @@ def exinp_btw_groups_torch(phase, mask):
                            masked_sin.unsqueeze(1).unsqueeze(3)) +
               torch.matmul(masked_cos.unsqueeze(2).unsqueeze(4),
                            masked_cos.unsqueeze(1).unsqueeze(3)))
-    diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0)
+    diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0).to(device)
     product = product / (groups_size_mat.unsqueeze(3).unsqueeze(4) + 1e-6)
     product = torch.exp(product.sum(4).sum(3)) * diag_mat
     product = product.sum(2).sum(1) / torch.abs(torch.sign(product)).sum(2).sum(1)
-
-    # final = torch.sum(product, dim=2, keepdim=True) - \
-            # (in_groups_product.unsqueeze(2) + 1e-6)
-    # final = nan2zero_torch(final)
-    # return np.round(np.exp(np.squeeze(product, axis=2).sum(3).sum(2).sum(1)\
-    # / 2 / [*torch.combinations(torch.arange(osci_num)).shape][0]), 5)
-    # return torch.exp(torch.squeeze(final, dim=2).sum(3).sum(2).mean(1))
     return product
 
 
