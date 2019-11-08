@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 
 # from kuramoto_software
-import net
+import nets
 import kuramoto as km
 import kura_visual as kv
 import loss_func_ex as lx
@@ -19,9 +19,12 @@ import loss_func_ex as lx
 # argument parser: if_cuda, data path, save path
 parser = argparse.ArgumentParser()
 parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
-parser.add_argument('-t', '--texture-types', type=int)
-parser.add_argument('-sp', '--save-path', type=str, help='where to save data')
+parser.add_argument('-t', '--texture-types', type=int, default=0)
+parser.add_argument('-sp', '--save-path', type=str, help='where to save data',default='/media/data_cifs/oscillators')
 args = parser.parse_args()
+
+ipdb.set_trace()
+#if not os.path.exists(args.)
 
 ######################
 # device
