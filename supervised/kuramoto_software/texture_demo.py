@@ -1,3 +1,11 @@
+DISPLAY=False
+if DISPLAY:
+    import matplotlib.pyplot as plt
+else:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    plt.ioff()
 import os
 import time
 import argparse
@@ -7,6 +15,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from torchvision import datasets
+import ipdb
 
 # from kuramoto_software
 import nets
@@ -19,12 +28,9 @@ import loss_func_ex as lx
 # argument parser: if_cuda, data path, save path
 parser = argparse.ArgumentParser()
 parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
-parser.add_argument('-t', '--texture-types', type=int, default=0)
-parser.add_argument('-sp', '--save-path', type=str, help='where to save data',default='/media/data_cifs/oscillators')
+parser.add_argument('-t', '--texture-types', type=int, default=2)
+parser.add_argument('-sp', '--save-path', type=str, help='where to save data',default='new_experiment')
 args = parser.parse_args()
-
-ipdb.set_trace()
-#if not os.path.exists(args.)
 
 ######################
 # device
@@ -76,18 +82,17 @@ save_path = save_dir + args.save_path
 
 if not os.path.exists(save_path):
     os.mkdir(save_path)
-
 ######################
 # training set
-training_set = datasets.DatasetFolder(load_path, np.load, transform=transform,
-                                      is_valid_file=valid_file)
+training_set = datasets.DatasetFolder(load_path, np.load, extensions=('.npy',), transform=transform)
+#                                      is_valid_file=valid_file)
 training_loader = DataLoader(training_set, batch_size=train_batch_size, shuffle=True)
 
 ######################
 # initialization
-model = net.simple_conv().to(device=args.device)
-print('network contains {} parameters'.format(net.count_parameters(model))) # parameter number
-time.sleep(2)
+model = nets.simple_conv().to(device=args.device)
+#print('network contains {} parameters'.format(model.count_parameters(model))) # parameter number
+#time.sleep(2)
 
 osci = km.kura_torch2(img_side ** 2, device=args.device)
 osci.set_ep(kura_update_rate)
@@ -107,12 +112,13 @@ test_data = np.load(load_dir + '/{}/test/0/img_'.format(group_size) +
                     str(np.random.randint(0, 10000)).ljust(4, '0') + '.npy')
 test_image = tc.tensor(test_data[0, ...].reshape(1, img_side, img_side)).float().to(args.device)
 test_mask = tc.tensor(test_data[1:, ...].reshape(1, group_size, img_side ** 2)).float().to(args.device)
-test_mask_colored = (tc.arange(group_size).unsqueeze(0).unsqueeze(-1).to(args.device)
+test_mask_colored = (tc.arange(group_size).unsqueeze(0).unsqueeze(-1).to(args.device).float()
                      * test_mask / group_size).sum(1)
 
 ######################
 # training pipeline
-for epoch in tqdm(range(train_epochs)):
+for epoch in range(train_epochs):
+    print('Training epoch {}'.format(epoch))
     # every epoch randomly select one from training set actually
     # it is not real validation data!
 
@@ -121,9 +127,8 @@ for epoch in tqdm(range(train_epochs)):
     valid_image = tc.tensor(valid_data[0, ...].reshape(1, img_side, img_side)).float().to(args.device)
     valid_mask = tc.tensor(valid_data[1:, ...].reshape(1, group_size, img_side ** 2)).float().to(args.device)
 
-    valid_mask_colored = (tc.arange(group_size).unsqueeze(0).unsqueeze(-1).to(args.device)
+    valid_mask_colored = (tc.arange(group_size).unsqueeze(0).unsqueeze(-1).to(args.device).float()
                           * valid_mask / group_size).sum(1)
-    
     if (epoch == 0) | ((epoch + 1) % show_every == 0):
         # validation example, save its coupling matrix
         osci.phase_init(initial_phase=rand_phase)
@@ -183,7 +188,7 @@ for epoch in tqdm(range(train_epochs)):
 
     tavg_loss_batches = []
 
-    for i, train_data in enumerate(training_loader):
+    for i, train_data in tqdm(enumerate(training_loader)):
         batch = train_data[0][:, 0, ...]
         mask = train_data[0][:, 1:, ...].reshape(-1, group_size, img_side * img_side)
 
@@ -193,12 +198,14 @@ for epoch in tqdm(range(train_epochs)):
 
         coupling = model(batch.unsqueeze(1))
 
-        osci.phase_init(initial_phase=batch_initial_phase)
+        osci.frequency_init(intrinsic_frequency=tc.zeros(batch.shape[0], batch.shape[1]*batch.shape[2]))
+        osci.phase_init(initial_phase=batch_initial_phase[:batch.shape[0],...])
         phase_list = osci.evolution(coupling, steps=episodes, record=True)
 
         norm = np.sum(np.arange(1, episodes + 1) ** 2)
         for t in range(episodes):
-            loss = lx.exinp_btw_groups_torch2(phase_list[t], mask, args.device)
+            loss = lx.exinp_btw_groups_torch(phase_list[t], mask, args.device)
+            # Originally this said '_torch2'
             tavg_loss += loss.mean() * (t ** 2)
         tavg_loss = tavg_loss / norm
 
