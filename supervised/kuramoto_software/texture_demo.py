@@ -28,8 +28,9 @@ import loss_func_ex as lx
 # argument parser: if_cuda, data path, save path
 parser = argparse.ArgumentParser()
 parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
-parser.add_argument('-t', '--texture-types', type=int, default=2)
-parser.add_argument('-sp', '--save-path', type=str, help='where to save data',default='new_experiment')
+parser.add_argument('--t', '--texture-types', type=int, default=2)
+parser.add_argument('--sp', '--save-path', type=str, help='Subfolder to save data in data_cifs/yuwei/oci_save/results',default='new_experiment')
+parser.add_argument('--time_weight', type=int, help='Degree of time averaging polynomial.', default=2)
 args = parser.parse_args()
 
 ######################
@@ -47,7 +48,7 @@ group_size = args.texture_types
 train_data_num = 2048
 train_batch_size = 32
 train_epochs = 2000
-show_every = 100
+show_every = 1
 # one plausible way is to check coupling matrix, it should be pretty smooth not very structured
 # If it is highly structured, need to change either network or learning rate
 kura_update_rate = 0.5 # waiting to explore
@@ -109,7 +110,7 @@ op = tc.optim.Adam(model.parameters(), lr=learning_rate)
 ######################
 # test image
 test_data = np.load(load_dir + '/{}/test/0/img_'.format(group_size) +
-                    str(np.random.randint(0, 10000)).ljust(4, '0') + '.npy')
+                    str(np.random.randint(0, 10000)).rjust(4, '0') + '.npy')
 test_image = tc.tensor(test_data[0, ...].reshape(1, img_side, img_side)).float().to(args.device)
 test_mask = tc.tensor(test_data[1:, ...].reshape(1, group_size, img_side ** 2)).float().to(args.device)
 test_mask_colored = (tc.arange(group_size).unsqueeze(0).unsqueeze(-1).to(args.device).float()
@@ -205,8 +206,7 @@ for epoch in range(train_epochs):
         norm = np.sum(np.arange(1, episodes + 1) ** 2)
         for t in range(episodes):
             loss = lx.exinp_btw_groups_torch(phase_list[t], mask, args.device)
-            # Originally this said '_torch2'
-            tavg_loss += loss.mean() * (t ** 2)
+            tavg_loss += loss.mean() * (t ** args.time_weight)
         tavg_loss = tavg_loss / norm
 
         sparsity_penalty = sparsity_weight * tc.abs(coupling).mean()

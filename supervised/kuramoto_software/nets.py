@@ -181,7 +181,7 @@ def weights_init(m, w_mean=0.0, w_std=0.1, b_mean=0.0, b_std=0.01):
 
 class simple_conv(nn.Module):
     def __init__(self):
-        super(simple_conv4, self).__init__()
+        super(simple_conv, self).__init__()
         self.conv1_k3 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.conv2_k3 = nn.Conv2d(32, 16, kernel_size=3, padding=1)
         self.conv3_k3 = nn.Conv2d(16, 8, kernel_size=3, padding=1)

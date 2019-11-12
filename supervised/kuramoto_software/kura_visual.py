@@ -301,8 +301,8 @@ class displayer(object):
         axes[6].axis('off')
         axes[6].title.set_text('mask')
         cbar_ax = fig.add_axes([0.95, 0.31, 0.01, 0.38])
-        plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
-                                       cmap='hsv'), cax=cbar_ax)
+        #plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
+        #                               cmap='hsv'), cax=cbar_ax)
         ax2 = fig.add_axes([0.07, 0.15, 0.88, 0.1])
         xmin, xmax = ax2.get_xlim()
         ax2.arrow(xmin, 0, xmax - xmin, 0., fc='k', ec='k',
