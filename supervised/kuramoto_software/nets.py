@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 from scipy.linalg import toeplitz
 from skimage.filters import gabor_kernel as gk
+from itertools import product
 import ipdb
 
 def gabor_filters(num_orientations=8):
@@ -205,6 +206,92 @@ class simple_conv(nn.Module):
         fc = self.fc(torch.sigmoid(conv.reshape(-1, 1024)))
         return fc.reshape(-1, 256, 256)
 
+class simple_meta_net(nn.Module):
+    def __init__(self, input_shape, batch_size, num_conv_layers=1, num_fc_layers=1, num_conv_features=[32], num_fc_features=[], conv_kernel_sides=[5], bias=True, coupling_params={}):
+        super(simple_meta_net, self).__init__()
+
+        # OUTPUT PARAMETERS
+        if coupling_params == {}:
+            coupling_params['num_layers'] = 2
+            coupling_params['vertical'] = {}
+            coupling_params['horizontal'] = {}
+            coupling_params['vertical']['stride'] = [(2,2)]
+            coupling_params['vertical']['num_features'] = [4]
+            coupling_params['vertical']['kernel_side'] = [3]
+            coupling_params['horizontal']['stride'] = [(2,2), (2,2)]
+            coupling_params['horizontal']['kernel_side'] = [3,3]
+        self.coupling_params = coupling_params
+        self.num_layers = coupling_params['num_layers']
+        self.v_stride = coupling_params['vertical']['stride']
+        self.v_num_features = coupling_params['vertical']['num_features']
+        self.v_kernel_side  = coupling_params['vertical']['kernel_side']
+        self.h_stride = coupling_params['horizontal']['stride']
+        self.h_kernel_side  = coupling_params['horizontal']['kernel_side']
+        
+        self.shape_dict = {}
+        self.batch_size = batch_size
+        layer_side = input_shape[1]
+        self.shape_dict['layer_shape'] = [input_shape]
+        for l in range(self.num_layers - 1):
+            k = self.v_kernel_side[l]
+            layer_side = int(np.floor( (layer_side - k + 1) / float(self.v_stride[0][0])))
+            self.shape_dict['layer_shape'].append((self.v_num_features[l], layer_side, layer_side))
+
+        # Vertical couplings
+        total_couplings = 0
+        for l in range(self.num_layers - 1):
+            key = 'coupling_shape_{}{}'.format(l, l+1) 
+            k = self.v_kernel_side[l]
+            sb = self.shape_dict['layer_shape'][l]
+            st = self.shape_dict['layer_shape'][l+1]
+            # Vertical couplings are shaped like num_units_l+1 X num_units_in_RF
+            fan_out = st[0]*st[1]*st[2] 
+            fan_in  = sb[0]*k**2
+            self.shape_dict[key] = (fan_out, fan_in) 
+            total_couplings += fan_out * fan_in
+
+        # Horizontal couplings
+        for l in range(self.num_layers):
+            key = 'coupling_shape_{}{}'.format(l,l)
+            k = self.h_kernel_side[l]
+            s = self.shape_dict['layer_shape'][l]
+            fan_out = s[0]*s[1]*s[2]
+            fan_in = s[0]*k**2
+            self.shape_dict[key] = (fan_out, fan_in)
+            total_couplings += fan_out * fan_in
+        self.total_couplings = total_couplings
+
+        # METANET PARAMETERS
+        num_conv_features = [1] + num_conv_features
+        num_fc_features = [input_shape[1]*input_shape[2] * num_conv_features[-1]] + num_fc_features + [self.total_couplings]
+        pad_sizes = [int((k / 2.0)) for k in conv_kernel_sides]
+        self.conv_layers = torch.nn.ModuleList([torch.nn.Conv2d(num_conv_features[i], num_conv_features[i+1], conv_kernel_sides[i], padding=pad_sizes[i], bias=bias) for i in range(num_conv_layers)])
+        self.fc_layers = torch.nn.ModuleList([torch.nn.Linear(num_fc_features[i], num_fc_features[i+1]) for i in range(num_fc_layers)])
+
+    def forward(self, x):
+        for layer in self.conv_layers:
+            x = layer(x)
+            x = torch.relu(x)
+        x = x.reshape(self.batch_size, -1)
+
+        for l, layer in enumerate(self.fc_layers):
+            x = layer(x)
+            x = torch.relu(x) if l < len(self.fc_layers) - 1 else x
+
+        x = x.reshape(self.batch_size,-1)
+        # Vertical couplings
+        last_coupling_num = 0
+        coupling_dict = {}
+        for (i,j) in list(product(range(self.num_layers), range(self.num_layers))):
+            if j < i: continue
+            shape_key = 'coupling_shape_{}{}'.format(i,j)
+            key = 'couplings_{}{}'.format(i, j)
+            coupling_shape = self.shape_dict[shape_key]
+            coupling_num = coupling_shape[0]*coupling_shape[1]
+            current_couplings =  x[:,last_coupling_num:last_coupling_num + coupling_num]
+            coupling_dict[key] = current_couplings.reshape(-1, coupling_shape[0], coupling_shape[1])
+            last_coupling_num += coupling_num
+        return coupling_dict
 
 def convert2twod(img_batch):
     img_side = img_batch.shape[-1]
@@ -227,7 +314,9 @@ def mask_pro(group_dict):
 
 
 if __name__ == '__main__':
-    my_net = deep_net(16, 1, 3, num_conv_features=16, bias=False, pretrained=True)
+    my_net = simple_meta_net([1,16,16],32)
+    x = torch.rand([32,1,16,16])
+    out = my_net.forward(x)
     ipdb.set_trace()
     #x = torch.rand(1, 1, 4)
     #network = net()
