@@ -1,87 +1,241 @@
 import torch
 import torch.nn as nn
-import numpy as np
 import kuramoto as km
-import matplotlib.lines as lines
-from scipy.linalg import toeplitz
-import ipdb
+import losses as ls
 
-def exinp_integrate_torch(phase, mask, device):
-    # integrate the calculation of both losses
-    # do not avg over batch
-    phase = phase.to(device)
-    mask = mask.to(device)
-    groups_size = torch.sum(mask, dim=2)
-    groups_size_mat = torch.matmul(groups_size.unsqueeze(2),
-                                   groups_size.unsqueeze(1))
 
-    masked_sin = (torch.sin(phase.unsqueeze(1)) * mask)
-    masked_cos = (torch.cos(phase.unsqueeze(1)) * mask)
+class DownConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, pooling):
+        super(DownConv, self).__init__()
 
-    product = (torch.matmul(masked_sin.unsqueeze(2).unsqueeze(4),
-                            masked_sin.unsqueeze(1).unsqueeze(3)) +
-               torch.matmul(masked_cos.unsqueeze(2).unsqueeze(4),
-                            masked_cos.unsqueeze(1).unsqueeze(3)))
-    diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0).to(device)
-    product_ = product.sum(4).sum(3) / (groups_size_mat + 1e-8)
-    product_1 = torch.exp(product_) * \
-                torch.where(groups_size_mat == 0,
-                            torch.zeros_like(groups_size_mat),
-                            torch.ones_like(groups_size_mat)) * diag_mat
-    dl = (product_1.sum(2).sum(1) / torch.abs(torch.sign(product_1)).sum(2).sum(1))
-    product_2 = torch.exp(1-product_) * \
-                torch.where(groups_size_mat == 0,
-                            torch.zeros_like(groups_size_mat),
-                            torch.ones_like(groups_size_mat)) * (1 - diag_mat)
-    sl = (product_2.sum(2).sum(1) / torch.abs(torch.sign(product_2)).sum(2).sum(1))
-    return dl + sl
+        self.pooling = pooling
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=1,
+                               padding=int((kernel_size - 1) / 2))
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, stride=1,
+                               padding=int((kernel_size - 1) / 2))
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-class simple_conv(nn.Module):
-    def __init__(self, img_side):
-        super(simple_conv, self).__init__()
+    def forward(self, x):
+        x = torch.relu(self.conv1(x))
+        x = torch.relu(self.conv2(x))
+        before_pool = x
+        if self.pooling:
+            x = self.pool(x)
+        return x, before_pool
+
+
+class UpConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(UpConv, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.upconv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
+        self.conv1 = nn.Conv2d(2 * out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, from_down, from_up):
+        from_up = self.upconv(from_up)
+        x = torch.cat((from_up, from_down), 1)
+        x = torch.relu(self.conv1(x))
+        x = torch.relu(self.conv2(x))
+        return x
+
+
+class Unet(nn.Module):
+    def __init__(self, in_channels, out_channels, start_filts, depth, img_side, connections, kernel_size, split):
+        """
+        Unet for semantic segmentation
+        """
+        super(Unet, self).__init__()
+        self.connections = connections
         self.img_side = img_side
-        self.conv1 = nn.Conv2d(1, 8, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(8, 16, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
-        self.fc = nn.Linear(32 * 108, 108 * 8)
+        self.out_channels = out_channels
+        self.split = split
+        self.down_convs = []
+        self.up_convs = []
 
-    def forward(self, input, device,
+        # create a encoder pathway
+        for i in range(depth):
+            ins = in_channels if i == 0 else outs
+            outs = start_filts * (2 ** i)
+            pooling = True if i < depth - 1 else False
+
+            down_conv = DownConv(ins, outs, kernel_size, pooling)
+            self.down_convs.append(down_conv)
+
+        # create a decoder pathway
+        for i in range(depth - 1):
+            ins = outs
+            outs = ins // 2
+            up_conv = UpConv(ins, outs)
+            self.up_convs.append(up_conv)
+
+        self.conv_final = nn.Conv2d(outs, out_channels, kernel_size=1, stride=1, padding=0)
+
+        self.down_convs = nn.ModuleList(self.down_convs)
+        self.up_convs = nn.ModuleList(self.up_convs)
+
+        self.linear = nn.Linear(int((out_channels/split) * (img_side ** 2)), int(((img_side ** 2)/split) * connections))
+
+        self.reset_params()
+
+    def forward(self, x, device,
                 kura_update_rate,
                 anneal,
                 episodes,
                 initial_phase,
-                connectivity):
-        osci = km.kura_torch2(input.shape[1] * input.shape[2], device=device)
+                connectivity,
+                record_step,
+                test):
+        x = x
+        osci = km.kura_torch(self.img_side ** 2, device=device)
         osci.set_ep(kura_update_rate)
         osci.phase_init(initial_phase)
 
-        conv1 = torch.relu(self.conv1(input.reshape(-1, 1, self.img_side, self.img_side)))
-        conv2 = torch.relu(self.conv2(conv1))
-        conv3 = torch.sigmoid(self.conv3(conv2))
-        fc = self.fc(conv3.reshape(-1, 108 * 32)).reshape(-1, 1296, 8)
+        encoder_outs = []
 
-        phase_list = osci.evolution2(fc, connectivity, anneal=anneal, steps=episodes, record=True)
-        return phase_list, fc
+        for i, module in enumerate(self.down_convs):
+            x, before_pool = module(x)
+            encoder_outs.append(before_pool)
 
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+        for i, module in enumerate(self.up_convs):
+            before_pool = encoder_outs[-(i + 2)]
+            x = module(before_pool, x)
 
-def load_net(name, **kwargs):
-    if name == 'simple_conv': return simple_conv(kwargs['img_side'])
-    else: raise ValueError('I have only implemented the simple conv net so far')
+        x = self.conv_final(x)
+
+        x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
+                                          (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.connections)
+
+        x = x / x.norm(p=2, dim=2).unsqueeze(2)
+
+        phase_list = osci.evolution(x, connectivity, anneal=anneal,
+                                     steps=episodes, initial_state=test, record_step=record_step)
+        return phase_list, x
+
+    @staticmethod
+    def weights_init(m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.xavier_normal_(m.weight)
+            nn.init.constant_(m.bias, 0)
+
+    def reset_params(self):
+        for i, m in enumerate(self.modules()):
+            self.weights_init(m)
+
+
+class simple_conv(nn.Module):
+    def __init__(self, depth, connections, out_channels, img_side, in_channels, kernel_size, start_filts, split):
+        """
+        For various image size, feature maps are all in the same shape as input
+        """
+        super(simple_conv, self).__init__()
+        self.connections = connections
+        self.img_side = img_side
+        self.out_channels = out_channels
+        self.split = split
+        self.convs1 = []
+        self.convs2 = []
+        self.depth = depth
+
+        start_filts = int(start_filts / 2)
+        for i in range(depth):
+            ins = in_channels if i == 0 else outs
+            outs = start_filts * (2 ** i)
+            conv = nn.Conv2d(ins, outs, kernel_size=kernel_size[0], stride=1, padding=int((kernel_size[0] - 1) / 2))
+            self.convs1.append(conv)
+            conv = nn.Conv2d(ins, outs, kernel_size=kernel_size[1], stride=1, padding=int((kernel_size[1] - 1) / 2))
+            self.convs2.append(conv)
+
+        self.convs1 = nn.ModuleList(self.convs1)
+        self.convs2 = nn.ModuleList(self.convs2)
+
+        self.conv_final = nn.Conv2d(outs * 2, out_channels, kernel_size=1, stride=1, padding=0)
+
+        self.linear = nn.Linear(int((self.out_channels / split) * (img_side ** 2)),
+                                int(((img_side ** 2) / split) * connections))
+        self.reset_params()
+
+    def forward(self, x, device,
+                kura_update_rate,
+                anneal,
+                episodes,
+                initial_phase,
+                connectivity,
+                record_step,
+                test):
+        osci = km.kura_torch(self.img_side ** 2, device=device)
+        osci.set_ep(kura_update_rate)
+        osci.phase_init(initial_phase)
+
+        x1 = x
+        x2 = x
+        for i, module in enumerate(self.convs1):
+            x1 = torch.relu(module(x1)) if i < self.depth - 1 else torch.sigmoid(module(x1))
+        for i, module in enumerate(self.convs2):
+            x2 = torch.relu(module(x2)) if i < self.depth - 1 else torch.sigmoid(module(x2))
+
+        x = torch.cat([x1, x2], dim=1)
+        for c in range(x1.shape[1]):
+            x[:, c * 2, ...] = x1[:, c, ...]
+            x[:, c * 2 + 1, ...] = x2[:, c, ...]
+
+        x = self.conv_final(x)
+
+        x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
+                                          (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.connections)
+
+        x = x / x.norm(p=2, dim=2).unsqueeze(2)
+
+        phase_list = osci.evolution(x, connectivity, anneal=anneal,
+                                     steps=episodes, initial_state=test, record_step=record_step)
+        return phase_list, x
+
+    @staticmethod
+    def weights_init(m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.xavier_normal_(m.weight)
+            nn.init.constant_(m.bias, 0)
+
+    def reset_params(self):
+        for i, m in enumerate(self.modules()):
+            self.weights_init(m)
+
 
 class criterion(nn.Module):
-    def __init__(self):
+    def __init__(self, degree):
         super(criterion, self).__init__()
+        self.degree = degree
 
     def forward(self, phase_list, mask, device, valid=False):
+        # losses will be 1d, with its length = episode length
         if valid:
-            loss = torch.tensor(0.).detach().to(device)
+            losses = \
+                ls.exinp_integrate_torch(torch.cat(phase_list, dim=0).detach(),
+                                         mask.repeat(len(phase_list), 1, 1).detach(),
+                                         device).reshape(len(phase_list), mask.shape[0]).mean(1)
         else:
-            loss = torch.tensor(0.).to(device)
-        for t in range(len(phase_list)):
-            loss += \
-                exinp_integrate_torch(phase_list[t], mask, device).mean() * (t ** 2)
-        return loss
+            losses = \
+                ls.exinp_integrate_torch(torch.cat(phase_list, dim=0),
+                                         mask.repeat(len(phase_list), 1, 1),
+                                         device).reshape(len(phase_list), mask.shape[0]).mean(1)
+        return torch.matmul(losses,
+                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(device))
 
 
+def count_parameters(model):
+    """counting parameter number of the assigned model"""
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def load_net(name, **kwargs):
+    if name == 'simple_conv': return simple_conv(in_channels=kwargs['in_channels'], start_filts=kwargs['start_filts'],
+                                                 depth=kwargs['depth'], img_side=kwargs['img_side'],
+                                                 connections=kwargs['num_cn'], out_channels=kwargs['out_channels'],
+                                                 split=kwargs['split'], kernel_size=kwargs['kernel_size'])
+    elif name == 'Unet': return Unet(in_channels=kwargs['in_channels'], start_filts=kwargs['start_filts'],
+                                     depth=kwargs['depth'], img_side=kwargs['img_side'],
+                                     connections=kwargs['num_cn'], out_channels=kwargs['out_channels'],
+                                     split=kwargs['split'], kernel_size=kwargs['kernel_size'])
+    else: raise ValueError('Network not included so far')
