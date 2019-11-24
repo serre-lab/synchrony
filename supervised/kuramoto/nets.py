@@ -88,7 +88,7 @@ class Unet(nn.Module):
                 connectivity,
                 record_step):
         x = x
-        osci = km.kura_torch2(self.img_side ** 2, device=device)
+        osci = km.kura_torch(self.img_side ** 2, device=device)
         osci.set_ep(kura_update_rate)
         osci.phase_init(initial_phase)
 
@@ -164,7 +164,7 @@ class simple_conv(nn.Module):
                 connectivity,
                 record_step):
 
-        osci = km.kura_torch2(self.img_side ** 2, device=device)
+        osci = km.kura_torch(self.img_side ** 2, device=device)
         osci.set_ep(kura_update_rate)
         osci.phase_init(initial_phase)
 

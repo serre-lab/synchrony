@@ -122,7 +122,7 @@ class kura_np(object):
         self.ep = self.ep - rate * float(i) * self.ep / steps
 
 
-class kura_torch3(object):
+class kura_torch(object):
     """
     Add device choice,
     default batch size if 1
