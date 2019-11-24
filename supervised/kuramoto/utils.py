@@ -1,7 +1,11 @@
 import numpy as np
 from tqdm import tqdm
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+plt.ioff()
 
-def show(displayer, phase_list, image, mask, coupling, path, name):
+def show(displayer, phase_list, image, mask, coupling, path, name, group_size, img_side):
     colored_mask = (np.expand_dims(np.expand_dims(np.arange(group_size), axis=0), axis=-1) * mask / group_size).sum(1)
     displayer.set_phases(phase_list)
     displayer.set_masks(mask)

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import kuramoto as km
 import losses as ls
-
+import ipdb
 
 class DownConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, pooling):
@@ -86,10 +86,9 @@ class Unet(nn.Module):
                 episodes,
                 initial_phase,
                 connectivity,
-                record_step,
-                test):
+                record_step):
         x = x
-        osci = km.kura_torch(self.img_side ** 2, device=device)
+        osci = km.kura_torch2(self.img_side ** 2, device=device)
         osci.set_ep(kura_update_rate)
         osci.phase_init(initial_phase)
 
@@ -110,8 +109,8 @@ class Unet(nn.Module):
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
 
-        phase_list = osci.evolution(x, connectivity, anneal=anneal,
-                                     steps=episodes, initial_state=test, record_step=record_step)
+        phase_list = osci.evolution2(x, connectivity, anneal=anneal,
+                                     steps=episodes, record=record_step)
         return phase_list, x
 
     @staticmethod
@@ -163,9 +162,9 @@ class simple_conv(nn.Module):
                 episodes,
                 initial_phase,
                 connectivity,
-                record_step,
-                test):
-        osci = km.kura_torch(self.img_side ** 2, device=device)
+                record_step):
+
+        osci = km.kura_torch2(self.img_side ** 2, device=device)
         osci.set_ep(kura_update_rate)
         osci.phase_init(initial_phase)
 
@@ -188,8 +187,8 @@ class simple_conv(nn.Module):
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
 
-        phase_list = osci.evolution(x, connectivity, anneal=anneal,
-                                     steps=episodes, initial_state=test, record_step=record_step)
+        phase_list = osci.evolution2(x, connectivity, anneal=anneal,
+                                     steps=episodes, record_step=record_step)
         return phase_list, x
 
     @staticmethod
@@ -229,13 +228,14 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def load_net(name, **kwargs):
-    if name == 'simple_conv': return simple_conv(in_channels=kwargs['in_channels'], start_filts=kwargs['start_filts'],
-                                                 depth=kwargs['depth'], img_side=kwargs['img_side'],
-                                                 connections=kwargs['num_cn'], out_channels=kwargs['out_channels'],
-                                                 split=kwargs['split'], kernel_size=kwargs['kernel_size'])
-    elif name == 'Unet': return Unet(in_channels=kwargs['in_channels'], start_filts=kwargs['start_filts'],
-                                     depth=kwargs['depth'], img_side=kwargs['img_side'],
-                                     connections=kwargs['num_cn'], out_channels=kwargs['out_channels'],
-                                     split=kwargs['split'], kernel_size=kwargs['kernel_size'])
+def load_net(args):
+    name = args.model_name
+    if name == 'simple_conv': return simple_conv(args.start_filts, args.depth, args.img_side, 
+                                                 args.num_cn, args.out_channels, args.split,
+                                                 args.kernel_size)
+
+    elif name == 'Unet': return Unet(args.in_channels, args.out_channels, args.start_filts, 
+                                     args.depth, args.img_side, args.num_cn, args.kernel_size,
+                                     args.split)
+
     else: raise ValueError('Network not included so far')

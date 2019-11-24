@@ -19,22 +19,39 @@ DataParallel
 kuramoto and loss_func_ex are integrated into an nn.Module to operate parallel calculation
 """
 parser = argparse.ArgumentParser()
+
+# Cosmetic parameters
 parser.add_argument('--data_name', type=str, default='composite_textures_mini')
 parser.add_argument('--exp_name', type=str, default='four_texture_segment')
-parser.add_argument('--model_name', type=str, default='simple_conv')
 parser.add_argument('--disable_cuda', type=bool, default=False)
 parser.add_argument('--interactive', type=str, default=False)
+
+# Model parameters
+parser.add_argument('--model_name', type=str, default='simple_conv')
+parser.add_argument('--in_channels', type=int, default=1)
+parser.add_argument('--start_filts', type=int, default=32)
+parser.add_argument('--depth', type=int, default=2)
+parser.add_argument('--out_channels', type=int, default=32)
+parser.add_argument('--split', type=int, default=4)
+parser.add_argument('--kernel_size', type=int, default=5)
+parser.add_argument('--num_cn', type=int, default=8)
+parser.add_argument('--critical_dist', type=int, default=2)
+parser.add_argument('--rand_init_phase', type=bool, default=False)
+parser.add_argument('--update_rate', type=float, default=1.6)
+parser.add_argument('--small_world', type=bool, default=False)
+parser.add_argument('--time_steps', type=int, default=8)
+
+# Data parameters
 parser.add_argument('--img_side', type=int, default=32)
 parser.add_argument('--segments', type=int, default=4)
 parser.add_argument('--batch_size', type=int, default=32)
+
+# Learning parameters
 parser.add_argument('--train_epochs', type=int, default=200)
-parser.add_argument('--time_steps', type=int, default=8)
 parser.add_argument('--time_weight', type=int, default=2)
-parser.add_argument('--rand_init_phase', type=bool, default=False)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
-parser.add_argument('--update_rate', type=float, default=1.6)
 parser.add_argument('--sparsity_weight', type=float, default=1e-5)
-parser.add_argument('--small_world', type=bool, default=False)
+
 args = parser.parse_args()
 
 if args.interactive:
@@ -56,8 +73,6 @@ else:
 
  ######################
 # parameters
-num_cn = 8 # connected neighbours
-critic_dist = 2 # distance from the center pixel
 num_test = 1000
 show_every = 20
 
@@ -91,11 +106,11 @@ testing_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=Tr
 ######################
 # initialization
 if torch.cuda.device_count() > 1:
-    model = nn.DataParallel(nets.load_net(args.model_name, img_side=args.img_side)).to(device)
-    criterion = nn.DataParallel(nets.criterion()).to(device)
+    model = nn.DataParallel(nets.load_net(args)).to(device)
+    criterion = nn.DataParallel(nets.criterion(args.time_weight)).to(device)
 else:
-    model = nets.load_net(args.model_name, img_side=args.img_side).to(device)
-    criterion = nets.criterion().to(device)
+    model = nets.load_net(args).to(device)
+    criterion = nets.criterion(args.time_weight).to(device)
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
 time.sleep(2)
 
@@ -116,7 +131,7 @@ op = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 # connectivity
 print('Generating fixed adjancency matrix.')
 if args.small_world:
-    connectivity = sw_connectivity(args.img_side, num_cn, critic_dist)
+    connectivity = sw_connectivity(args.img_side, args.num_cn, args.critical_dist)
 else:
     connectivity = np.ones((args.img_side ** 2, num_cn))
 connectivity = torch.tensor(connectivity).long().unsqueeze(0).to('cpu')
@@ -132,17 +147,16 @@ for epoch in range(args.train_epochs):
 
     for train_data, _ in tqdm(training_loader):
         batch = train_data[:, :,0, ...].to(device).float()
-        #mask = train_data[:, :, 1:, ...].reshape(-1, args.segments, args.img_side * args.img_side)
-        mask = train_data[:,:,1:,...].transpose(2,1).to(device).float()
+        mask = train_data[:, :, 1:, ...].transpose(2,1).reshape(-1, args.segments, args.img_side * args.img_side).to(device).float()
         if args.rand_init_phase:
             batch_initial_phase = 2*np.pi*torch.rand((args.batch_size, args.img_side**2))
 
         op.zero_grad()
         phase_list_train, coupling_train = model(batch.unsqueeze(1), device,
                                              args.update_rate, anneal, args.time_steps,
-                                             batch_initial_phase, batch_connectivity)
+                                             batch_initial_phase, batch_connectivity,
+                                             record_step=True)
 
-        ipdb.set_trace()
         tavg_loss = criterion(phase_list_train, mask, device)
         tavg_loss = tavg_loss.mean() / norm
         tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
@@ -161,7 +175,7 @@ for epoch in range(args.train_epochs):
             coupling_history.append(coupling_train_show)
             train_phase_list = np.array([phase.cpu().data.numpy()[train_ind, :] for phase in phase_list_train])
             show(displayer, train_phase_list, train_image, train_mask, coupling_train_show, save_dir,
-                'train{}'.format(epoch))
+                'train{}'.format(epoch), args.segments, args.img_side)
 
     for step, test_data in tqdm(enumerate(testing_loader)):
         # cross-validation

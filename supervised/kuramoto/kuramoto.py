@@ -130,7 +130,8 @@ class kura_torch(object):
                  oscillator_num,
                  update_rate=0.1,
                  mean_field=1,
-                 batch_size=1):
+                 batch_size=1,
+                 device='cpu'):
         self.ep = update_rate
         self.K = mean_field
         self.batch = batch_size

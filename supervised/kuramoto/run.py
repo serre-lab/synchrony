@@ -5,7 +5,7 @@ import subprocess
 import ipdb
 
 meta_parser = argparse.ArgumentParser()
-meta_parser.add_argument('--name', type=str, default='Texture')
+meta_parser.add_argument('--name', type=str, default='Multi_MNIST')
 meta_parser.add_argument('--disable_cuda', type=bool, default=False)
 meta_args = meta_parser.parse_args()
 

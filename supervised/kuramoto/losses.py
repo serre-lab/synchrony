@@ -2,6 +2,34 @@ import numpy as np
 import torch
 import ipdb
 
+def exinp_integrate_torch(phase, mask, device):
+    phase = phase.to(device)
+    mask = mask.to(device)
+    groups_size = torch.sum(mask, dim=2)
+    groups_size_mat = torch.matmul(groups_size.unsqueeze(2),
+                                  groups_size.unsqueeze(1))
+
+    masked_sin = (torch.sin(phase.unsqueeze(1)) * mask)
+    masked_cos = (torch.cos(phase.unsqueeze(1)) * mask)
+
+    product = (torch.matmul(masked_sin.unsqueeze(2).unsqueeze(4),
+               masked_sin.unsqueeze(1).unsqueeze(3)) +
+               torch.matmul(masked_cos.unsqueeze(2).unsqueeze(4),
+               masked_cos.unsqueeze(1).unsqueeze(3)))
+
+    diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0).to(device)
+    product_ = product.sum(4).sum(3) / (groups_size_mat + 1e-8)
+    product_1 = torch.exp(product_) * \
+                torch.where(groups_size_mat == 0,
+                            torch.zeros_like(groups_size_mat),
+                            torch.ones_like(groups_size_mat)) * diag_mat
+    dl = (product_1.sum(2).sum(1) / torch.abs(torch.sign(product_1)).sum(2).sum(1))
+    product_2 = torch.exp(1-product_) * \
+                torch.where(groups_size_mat == 0,
+                            torch.zeros_like(groups_size_mat),
+                            torch.ones_like(groups_size_mat)) * (1 - diag_mat)
+    sl = (product_2.sum(2).sum(1) / torch.abs(torch.sign(product_2)).sum(2).sum(1))
+    return dl + sl
 
 def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Get image parameters
