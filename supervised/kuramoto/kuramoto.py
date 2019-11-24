@@ -122,112 +122,7 @@ class kura_np(object):
         self.ep = self.ep - rate * float(i) * self.ep / steps
 
 
-class kura_torch(object):
-    """
-    torch
-    """
-    def __init__(self,
-                 oscillator_num,
-                 update_rate=0.1,
-                 mean_field=1,
-                 batch_size=1,
-                 device='cpu'):
-        self.ep = update_rate
-        self.K = mean_field
-        self.batch = batch_size
-        self.N = oscillator_num
-        self.phase = (torch.rand(batch_size, oscillator_num) * 2).to(device)
-        self.in_frq = torch.zeros_like(self.phase).to(device)
-        self.delta = torch.zeros_like(self.phase).to(device)
-
-    def phase_init(self, initial_phase=None):
-        if initial_phase is not None:
-            self.phase = initial_phase
-        else:
-            self.phase = torch.rand(self.batch, self.N) * 2 * np.pi
-        return True
-
-    def frequency_init(self, initial_frequency=None):
-        if initial_frequency is not None:
-            self.in_frq = initial_frequency
-        else:
-            self.in_frq = torch.zeros((self.batch, self.N))
-        return True
-
-    def set_ep(self, updating_rate=None):
-        if updating_rate is not None:
-            self.ep = updating_rate
-        else:
-            self.ep = 0.1
-        return True
-
-    def set_mean_field(self, mean_field=None):
-        if mean_field is not None:
-            self.K = mean_field
-        else:
-            self.K = 1
-
-    def _update(self, coupling, test):
-        diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
-        # diffs.shape=(batch, osci_num, osci_num)
-        # coupling.shape=(batch, osci_num, osci_num)
-        # 0, B-A, C-A
-        # A-B, 0, C-B
-        # A-C, B-C, 0
-        self.delta = self.ep * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.N - 1)).to(device)
-        self.phase = self.phase + self.delta
-        if test:
-            self.phase = self.phase % (2 * np.pi)
-        return self.phase, self.delta
-
-    def evolution(self, coupling, steps=1, record=False, show=False, test=False, anneal=0):
-        phases_list = [self.phase]
-        freqs_list = [self.delta]
-        if show:
-            for i in tqdm(range(steps)):
-                new, freq = self._update(coupling, test)
-                self.eps_anneal(i, steps, anneal)
-                phases_list.append(new)
-                freqs_list.append(freq)
-        else:
-            for i in range(steps):
-                new, freq = self._update(coupling, test)
-                self.eps_anneal(i, steps, anneal)
-                phases_list.append(new)
-                freqs_list.append(freq)
-        try:
-            if record:
-                return phases_list, freqs_list
-            else:
-                # only return final phase
-                return self.phase
-        except RuntimeError:
-            print('No updating')
-
-    def set_params(self,
-                   updating_rate=0.1,
-                   mean_field=1,
-                   initial_phase=None,
-                   initial_freq=None):
-        self.set_ep(updating_rate)
-        self.set_mean_field(mean_field)
-        self.phase_init(initial_phase)
-        self.frequency_init(initial_freq)
-        return True
-
-    def set_batch_size(self, batch_size):
-        self.batch = batch_size
-        return True
-
-    def eps_anneal(self,
-                   i,
-                   steps,
-                   rate=0):
-        self.ep = self.ep - rate * float(i) * self.ep / steps
-        return True
-
-
-class kura_torch2(object):
+class kura_torch3(object):
     """
     Add device choice,
     default batch size if 1
@@ -269,6 +164,18 @@ class kura_torch2(object):
     def _update2(self, coupling, inds):
         diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
         self.delta = self.ep * (torch.sum(coupling * torch.sin(diffs).gather(2, inds), dim=2) / coupling.shape[2])
+        self.phase = self.phase + self.delta
+        return self.phase
+    
+    def _update3(self, coupling, inds):
+        # efficient, much less memory usage
+        n = coupling.shape[2]
+        coupling = torch.zeros(coupling.shape[0],
+                               coupling.shape[1],
+                               coupling.shape[1]).to(self.device).scatter_(dim=2, index=inds, src=coupling)
+        self.delta = self.ep * \
+                     (torch.bmm(coupling, torch.sin(self.phase).unsqueeze(2).float()).squeeze(2) * torch.cos(self.phase) -
+                     torch.bmm(coupling, torch.cos(self.phase).unsqueeze(2).float()).squeeze(2) * torch.sin(self.phase)) / n
         self.phase = self.phase + self.delta
         return self.phase
 
@@ -314,6 +221,30 @@ class kura_torch2(object):
         except RuntimeError:
             print('No updating')
 
+    def evolution3(self, coupling, inds, steps=1, show=False, anneal=0, initial_state=True, record_step=1):
+        # integrate the update3 function and offer a new variable 
+        # record_step(default:1) which will set the number of how many steps to record from the last step
+        if initial_state:
+            phases_list = [self.phase]
+        else:
+            phases_list = []
+        if show:
+            for i in tqdm(range(steps)):
+                new = self._update3(coupling, inds)
+                self.eps_anneal(i, steps, anneal)
+                if i > (steps - 1 - record_step):
+                    phases_list.append(new)
+        else:
+            for i in range(steps):
+                new = self._update3(coupling, inds)
+                self.eps_anneal(i, steps, anneal)
+                if i > (steps - 1 - record_step):
+                    phases_list.append(new)
+        try:
+            return phases_list
+        except RuntimeError:
+            print('No updating')
+    
     def eps_anneal(self, i, steps, rate=0):
         self.ep = self.ep - rate * float(i) * self.ep / steps
         return True

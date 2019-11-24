@@ -31,6 +31,29 @@ def exinp_integrate_torch(phase, mask, device):
     sl = (product_2.sum(2).sum(1) / torch.abs(torch.sign(product_2)).sum(2).sum(1))
     return dl + sl
 
+
+def exinp_integrate_torch2(phase, mask, device):
+    # With efficient coding
+    # integrate the calculation of both synchrony and desynchrony losses that I am currently using
+    # This will directly give you the summation of two losses
+    # This does not avg over batch
+    # During training, the minimum usually lies between 0.6-0.7
+    phase = phase.to(device)
+    groups_size = torch.sum(mask, dim=2)
+    groups_size_mat = torch.matmul(groups_size.unsqueeze(2),
+                                   groups_size.unsqueeze(1))
+    mask = torch.transpose(mask.to(device), 1, 2)
+
+    diag = (torch.eye(groups_size_mat.shape[1]) + 1 - 3 * torch.eye(groups_size_mat.shape[1])).to(device)
+    product_s = torch.bmm(torch.sin(phase).unsqueeze(1).float(), mask)
+    product_c = torch.bmm(torch.cos(phase).unsqueeze(1).float(), mask)
+    prod = (torch.bmm(torch.transpose(product_s, 1, 2), product_s) +
+            torch.bmm(torch.transpose(product_c, 1, 2), product_c)) / (groups_size_mat + 1e-8)
+    prod = torch.exp(prod * diag + torch.eye(groups_size_mat.shape[1]).to(device)) * \
+           torch.where(groups_size_mat == 0, torch.zeros_like(groups_size_mat), torch.ones_like(groups_size_mat))
+    return prod.sum(2).sum(1) / torch.abs(torch.sign(prod)).sum(2).sum(1)
+
+
 def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Get image parameters
 
