@@ -1,5 +1,5 @@
 ## Kura-Net
-This directory contains material for backpropagating through the flow of a Kuramoto model for the purposes of image segmentation. 
+This directory contains material for backpropagating through the flow of a Kuramoto model for the purpose of image segmentation. 
 
 ## Prerequisites
 All nets are coded in torch==1.1.0. Eventually, you should be able to run `pip install -r requirements.txt` in this repo's top directory in order to install everything you need. I hope I will be able add that soon.
@@ -31,6 +31,13 @@ To design an experiment, add experiment details to the config file `experiments.
 * sparsity_weight- L1 sparsity penalty on coupling matrix
 * small_world- Makes couplings a small world graph
 * num_cn- Number of connected neighbors in the lattice from which the small world graph is generated.
+* critical_distance - Neighborhood for local coupling
+* in_channels- Number of coupling net input channels
+* start_filts- Number of first layer features (?)
+* out_channels- Number of output features(?)
+* split- Number of sections into which to divide the conv output to repeatedly apply the fully connected layers. Increasing this integer over 1 should save memory.
+* depth- Number of layers in the net
+* kernel_size- Size of the kernels in a layer. Possibly a tuple for multi-scale models, but this has not been implemented.
 
 ## Important notes
 Soon, a second type of experiment will be added in which several sub-experiments are run in sequence in order to explore a particular hyperparameter.  
