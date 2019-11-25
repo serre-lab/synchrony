@@ -1,8 +1,21 @@
 import torch
 import torch.nn as nn
-import kuramoto as km
+from kuramoto import Kuramoto as km
 import losses as ls
 import ipdb
+
+class KuraNet(nn.Module):
+    def __init__(self, img_side, connectivity, batch_size=32, device='cpu', update_rate=.1, anneal=0, time_steps=10, record_steps=10, phase_initialization='random', intrinsic_frequencies='zero'):
+        super(KuraNet, self).__init__()
+
+        self.img_side = img_side
+        self.connectivity = connectivity
+        osci = km(img_side ** 2, update_rate=update_rate, batch_size=batch_size,
+                                  anneal=anneal, time_steps=time_steps, connectivity=connectivity,
+                                  record_steps=record_steps, phase_initialization=phase_initialization, device=device, intrinsic_frequencies=intrinsic_frequencies)
+        self.evolution = osci.evolution
+        #osci.set_ep(update_rate)
+        #osci.phase_init(initialization=initialization)
 
 class DownConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, pooling):
@@ -42,56 +55,46 @@ class UpConv(nn.Module):
         return x
 
 
-class Unet(nn.Module):
-    def __init__(self, in_channels, out_channels, start_filts, depth, img_side, connections, kernel_size, split):
+class Unet(KuraNet):
+    def __init__(self, args, connectivity):
         """
         Unet for semantic segmentation
         """
-        super(Unet, self).__init__()
-        self.connections = connections
-        self.img_side = img_side
-        self.out_channels = out_channels
-        self.split = split
+        super(Unet, self).__init__(args.img_side, connectivity, batch_size=args.batch_size, update_rate = args.update_rate,
+                                   anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, 
+                                   phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+
+        self.out_channels = args.out_channels
+        self.num_cn = args.num_cn
+        self.split = args.split
         self.down_convs = []
         self.up_convs = []
 
         # create a encoder pathway
-        for i in range(depth):
-            ins = in_channels if i == 0 else outs
-            outs = start_filts * (2 ** i)
-            pooling = True if i < depth - 1 else False
+        for i in range(args.depth):
+            ins = args.in_channels if i == 0 else outs
+            outs = args.start_filts * (2 ** i)
+            pooling = True if i < args.depth - 1 else False
 
-            down_conv = DownConv(ins, outs, kernel_size, pooling)
+            down_conv = DownConv(ins, outs, args.kernel_size, pooling)
             self.down_convs.append(down_conv)
 
         # create a decoder pathway
-        for i in range(depth - 1):
+        for i in range(args.depth - 1):
             ins = outs
             outs = ins // 2
             up_conv = UpConv(ins, outs)
             self.up_convs.append(up_conv)
 
-        self.conv_final = nn.Conv2d(outs, out_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_final = nn.Conv2d(outs, self.out_channels, kernel_size=1, stride=1, padding=0)
 
         self.down_convs = nn.ModuleList(self.down_convs)
         self.up_convs = nn.ModuleList(self.up_convs)
-
-        self.linear = nn.Linear(int((out_channels/split) * (img_side ** 2)), int(((img_side ** 2)/split) * connections))
+        self.linear = nn.Linear(int((self.out_channels/self.split) * (self.img_side ** 2)), int(((self.img_side ** 2)/self.split) * args.num_cn))
 
         self.reset_params()
 
-    def forward(self, x, device,
-                kura_update_rate,
-                anneal,
-                episodes,
-                initial_phase,
-                connectivity,
-                record_step):
-        x = x
-        osci = km.kura_torch(self.img_side ** 2, device=device)
-        osci.set_ep(kura_update_rate)
-        osci.phase_init(initial_phase)
-
+    def forward(self, x):
         encoder_outs = []
 
         for i, module in enumerate(self.down_convs):
@@ -105,12 +108,10 @@ class Unet(nn.Module):
         x = self.conv_final(x)
 
         x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
-                                          (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.connections)
+                                          (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
-
-        phase_list = osci.evolution2(x, connectivity, anneal=anneal,
-                                     steps=episodes, record=record_step)
+        phase_list = self.evolution(x)
         return phase_list, x
 
     @staticmethod
@@ -124,49 +125,42 @@ class Unet(nn.Module):
             self.weights_init(m)
 
 
-class simple_conv(nn.Module):
-    def __init__(self, depth, connections, out_channels, img_side, in_channels, kernel_size, start_filts, split):
+class simple_conv(KuraNet):
+
+    def __init__(self, args, connectivity):
         """
         For various image size, feature maps are all in the same shape as input
         """
-        super(simple_conv, self).__init__()
+        super(simple_conv, self).__init__(args.img_side, connectivity, batch_size=args.batch_size, update_rate = args.update_rate,
+                                   anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, 
+                                   phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+
         self.connections = connections
-        self.img_side = img_side
         self.out_channels = out_channels
         self.split = split
         self.convs1 = []
         self.convs2 = []
         self.depth = depth
 
-        start_filts = int(start_filts / 2)
-        for i in range(depth):
-            ins = in_channels if i == 0 else outs
-            outs = start_filts * (2 ** i)
-            conv = nn.Conv2d(ins, outs, kernel_size=kernel_size[0], stride=1, padding=int((kernel_size[0] - 1) / 2))
+        args.start_filts = int(args.start_filts / 2)
+        for i in range(args.depth):
+            ins = args.in_channels if i == 0 else outs
+            outs = args.start_filts * (2 ** i)
+            conv = nn.Conv2d(ins, outs, kernel_size=args.kernel_size[0], stride=1, padding=int((args.kernel_size[0] - 1) / 2))
             self.convs1.append(conv)
-            conv = nn.Conv2d(ins, outs, kernel_size=kernel_size[1], stride=1, padding=int((kernel_size[1] - 1) / 2))
+            conv = nn.Conv2d(ins, outs, kernel_size=args.kernel_size[1], stride=1, padding=int((args.kernel_size[1] - 1) / 2))
             self.convs2.append(conv)
 
         self.convs1 = nn.ModuleList(self.convs1)
         self.convs2 = nn.ModuleList(self.convs2)
 
-        self.conv_final = nn.Conv2d(outs * 2, out_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_final = nn.Conv2d(outs * 2, args.out_channels, kernel_size=1, stride=1, padding=0)
 
-        self.linear = nn.Linear(int((self.out_channels / split) * (img_side ** 2)),
-                                int(((img_side ** 2) / split) * connections))
+        self.linear = nn.Linear(int((args.out_channels / args.split) * (args.img_side ** 2)),
+                                int(((args.img_side ** 2) / args.split) * args.num_cn))
         self.reset_params()
 
-    def forward(self, x, device,
-                kura_update_rate,
-                anneal,
-                episodes,
-                initial_phase,
-                connectivity,
-                record_step):
-
-        osci = km.kura_torch(self.img_side ** 2, device=device)
-        osci.set_ep(kura_update_rate)
-        osci.phase_init(initial_phase)
+    def forward(self, x):
 
         x1 = x
         x2 = x
@@ -187,8 +181,7 @@ class simple_conv(nn.Module):
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
 
-        phase_list = osci.evolution2(x, connectivity, anneal=anneal,
-                                     steps=episodes, record_step=record_step)
+        phase_list = self.evolution(x)
         return phase_list, x
 
     @staticmethod
@@ -228,14 +221,10 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def load_net(args):
+def load_net(args, connectivity):
     name = args.model_name
-    if name == 'simple_conv': return simple_conv(args.start_filts, args.depth, args.img_side, 
-                                                 args.num_cn, args.out_channels, args.split,
-                                                 args.kernel_size)
+    if name == 'simple_conv': return simple_conv(args, connectivity)
 
-    elif name == 'Unet': return Unet(args.in_channels, args.out_channels, args.start_filts, 
-                                     args.depth, args.img_side, args.num_cn, args.kernel_size,
-                                     args.split)
+    elif name == 'Unet': return Unet(args, connectivity)
 
     else: raise ValueError('Network not included so far')

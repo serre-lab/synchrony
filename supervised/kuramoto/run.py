@@ -6,15 +6,12 @@ import ipdb
 
 meta_parser = argparse.ArgumentParser()
 meta_parser.add_argument('--name', type=str, default='Multi_MNIST')
-meta_parser.add_argument('--disable_cuda', type=bool, default=False)
 meta_args = meta_parser.parse_args()
 
 config = ConfigParser()
 config.read('experiments.cfg')
 
-if config.has_section(meta_args.name):
-    config.set(meta_args.name, 'disable_cuda', meta_args.disable_cuda)
-else:
+if not config.has_section(meta_args.name):
     ValueError('This is not a recognized experiment.')
 
 #TODO Finish this
