@@ -11,9 +11,8 @@ from tqdm import tqdm
 import display as disp
 import sys
 from utils import *
-import ipdb
-#import warnings
-#warnings.filterwarnings('ignore')
+import warnings
+warnings.filterwarnings('ignore')
 """
 DataParallel
 kuramoto and loss_func_ex are integrated into an nn.Module to operate parallel calculation
@@ -87,10 +86,10 @@ if not os.path.exists(save_dir):
 ######################
 # Load data
 #training set
-training_set = datasets.DatasetFolder(train_path, np.load, extensions=('npy',), transform=transforms.ToTensor())
+training_set = datasets.DatasetFolder(train_path, np.load, extensions=('npy',))
 training_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=True, drop_last=True)
 # testing set
-testing_set = datasets.DatasetFolder(test_path, np.load, extensions=('npy',), transform=transforms.ToTensor())
+testing_set = datasets.DatasetFolder(test_path, np.load, extensions=('npy',))
 testing_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=True,
 	drop_last=True)
 
@@ -130,8 +129,8 @@ for epoch in range(args.train_epochs):
     print('Epoch: {}'.format(epoch))
 
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
-        batch = train_data[:, :,0, ...].to(args.device).float()
-        mask = train_data[:, :, 1:, ...].transpose(2,1).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
+        batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
+        mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
 
         op.zero_grad()
         phase_list_train, coupling_train = model(batch.unsqueeze(1))
