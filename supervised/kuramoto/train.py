@@ -54,6 +54,9 @@ parser.add_argument('--anneal', type=float, default=0)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--sparsity_weight', type=float, default=1e-5)
 
+# loss parameters
+parser.add_argument('--transform', type=str, default='linear')
+
 args = parser.parse_args()
 
 if args.interactive:
@@ -135,7 +138,7 @@ for epoch in range(args.train_epochs):
         op.zero_grad()
         phase_list_train, coupling_train = model(batch.unsqueeze(1))
 
-        tavg_loss = criterion(phase_list_train, mask, args.device)
+        tavg_loss = criterion(phase_list_train, mask, args.transform, args.device)
         tavg_loss = tavg_loss.mean() / norm
         tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
 
@@ -165,7 +168,7 @@ for epoch in range(args.train_epochs):
         # phase.shape=(time, batch, N)
         # mask.shape=(time, batch, group, N)
         # return loss.shape=(time * batch
-        tavg_loss_test = criterion(phase_list_test, mask, args.device, True)
+        tavg_loss_test = criterion(phase_list_test, mask, args.transform, args.device, True)
         tavg_loss_test = tavg_loss_test.mean() / norm
         tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
         loss_test_history.append(tavg_loss_test.cpu().data.numpy())
