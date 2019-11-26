@@ -2,7 +2,8 @@ import numpy as np
 import torch
 import ipdb
 
-def exinp_integrate_torch(phase, mask, device):
+
+def exinp_integrate_torch(phase, mask, transform, device):
     phase = phase.to(device)
     mask = mask.to(device)
     groups_size = torch.sum(mask, dim=2)
@@ -17,22 +18,38 @@ def exinp_integrate_torch(phase, mask, device):
                torch.matmul(masked_cos.unsqueeze(2).unsqueeze(4),
                masked_cos.unsqueeze(1).unsqueeze(3)))
 
-    diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0).to(device)
-    product_ = product.sum(4).sum(3) / (groups_size_mat + 1e-8)
-    product_1 = torch.exp(product_) * \
-                torch.where(groups_size_mat == 0,
-                            torch.zeros_like(groups_size_mat),
-                            torch.ones_like(groups_size_mat)) * diag_mat
-    dl = (product_1.sum(2).sum(1) / torch.abs(torch.sign(product_1)).sum(2).sum(1))
-    product_2 = torch.exp(1-product_) * \
-                torch.where(groups_size_mat == 0,
-                            torch.zeros_like(groups_size_mat),
-                            torch.ones_like(groups_size_mat)) * (1 - diag_mat)
-    sl = (product_2.sum(2).sum(1) / torch.abs(torch.sign(product_2)).sum(2).sum(1))
+    if transform == 'exp':
+        diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0).to(device)
+        product_ = product.sum(4).sum(3) / (groups_size_mat + 1e-8)
+        product_1 = torch.exp(product_) * \
+                    torch.where(groups_size_mat == 0,
+                                torch.zeros_like(groups_size_mat),
+                                torch.ones_like(groups_size_mat)) * diag_mat
+        dl = (product_1.sum(2).sum(1) / torch.abs(torch.sign(product_1)).sum(2).sum(1))
+        product_2 = torch.exp(1-product_) * \
+                    torch.where(groups_size_mat == 0,
+                                torch.zeros_like(groups_size_mat),
+                                torch.ones_like(groups_size_mat)) * (1 - diag_mat)
+        sl = (product_2.sum(2).sum(1) / torch.abs(torch.sign(product_2)).sum(2).sum(1))
+    elif transform == 'linear':
+        diag_mat = (1 - torch.eye(groups_size_mat.shape[1], groups_size_mat.shape[1])).unsqueeze(0).to(device)
+        product_ = product.sum(4).sum(3) / (groups_size_mat + 1e-8)
+        product_1 = (product_ + 1) * \
+                    torch.where(groups_size_mat == 0,
+                                torch.zeros_like(groups_size_mat),
+                                torch.ones_like(groups_size_mat)) * diag_mat
+        dl = (product_1.sum(2).sum(1) / torch.abs(torch.sign(product_1)).sum(2).sum(1))
+        product_2 = (1 - product_ + 1) * \
+                    torch.where(groups_size_mat == 0,
+                                torch.zeros_like(groups_size_mat),
+                                torch.ones_like(groups_size_mat)) * (1 - diag_mat)
+        sl = (product_2.sum(2).sum(1) / torch.abs(torch.sign(product_2)).sum(2).sum(1))
+    else:
+        raise ValueError('transformation not included')
     return dl + sl
 
 
-def exinp_integrate_torch2(phase, mask, device):
+def exinp_integrate_torch2(phase, mask, transform, device):
     # With efficient coding
     # integrate the calculation of both synchrony and desynchrony losses that I am currently using
     # This will directly give you the summation of two losses
@@ -49,8 +66,14 @@ def exinp_integrate_torch2(phase, mask, device):
     product_c = torch.bmm(torch.cos(phase).unsqueeze(1).float(), mask)
     prod = (torch.bmm(torch.transpose(product_s, 1, 2), product_s) +
             torch.bmm(torch.transpose(product_c, 1, 2), product_c)) / (groups_size_mat + 1e-8)
-    prod = torch.exp(prod * diag + torch.eye(groups_size_mat.shape[1]).to(device)) * \
-           torch.where(groups_size_mat == 0, torch.zeros_like(groups_size_mat), torch.ones_like(groups_size_mat))
+    if transform == 'exp':
+        prod = torch.exp(prod * diag + torch.eye(groups_size_mat.shape[1]).to(device)) * \
+               torch.where(groups_size_mat == 0, torch.zeros_like(groups_size_mat), torch.ones_like(groups_size_mat))
+    elif transform == 'linear':
+        prod = (prod * diag + torch.eye(groups_size_mat.shape[1]).to(device) + 1) * \
+               torch.where(groups_size_mat == 0, torch.zeros_like(groups_size_mat), torch.ones_like(groups_size_mat))
+    else:
+        raise ValueError('transformation not included')
     return prod.sum(2).sum(1) / torch.abs(torch.sign(prod)).sum(2).sum(1)
 
 
