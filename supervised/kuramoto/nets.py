@@ -200,19 +200,19 @@ class criterion(nn.Module):
         super(criterion, self).__init__()
         self.degree = degree
 
-    def forward(self, phase_list, mask, device, valid=False):
+    def forward(self, phase_list, mask, transform, device, valid=False):
         # losses will be 1d, with its length = episode length
         if valid:
             losses = \
                 ls.exinp_integrate_torch(torch.cat(phase_list, dim=0).detach(),
                                          mask.repeat(len(phase_list), 1, 1).detach(),
-                                         'linear',
+                                         transform,
                                          device).reshape(len(phase_list), mask.shape[0]).mean(1)
         else:
             losses = \
                 ls.exinp_integrate_torch(torch.cat(phase_list, dim=0),
                                          mask.repeat(len(phase_list), 1, 1),
-                                         'linear',
+                                         transform,
                                          device).reshape(len(phase_list), mask.shape[0]).mean(1)
         return torch.matmul(losses,
                             torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(device))
