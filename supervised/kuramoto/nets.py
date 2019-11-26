@@ -206,11 +206,13 @@ class criterion(nn.Module):
             losses = \
                 ls.exinp_integrate_torch(torch.cat(phase_list, dim=0).detach(),
                                          mask.repeat(len(phase_list), 1, 1).detach(),
+                                         'linear',
                                          device).reshape(len(phase_list), mask.shape[0]).mean(1)
         else:
             losses = \
                 ls.exinp_integrate_torch(torch.cat(phase_list, dim=0),
                                          mask.repeat(len(phase_list), 1, 1),
+                                         'linear',
                                          device).reshape(len(phase_list), mask.shape[0]).mean(1)
         return torch.matmul(losses,
                             torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(device))
