@@ -5,10 +5,11 @@ This directory contains material for backpropagating through the flow of a Kuram
 All nets are coded in torch==1.1.0. Eventually, you should be able to run `pip install -r requirements.txt` in this repo's top directory in order to install everything you need. I hope I will be able add that soon.
 
 ## Running demo
-Calling `python run.py` will train a Unet to segment images of 4 textures using Kuramoto dynamics. 
+Calling `python run.py` will train a Unet to segment images of 3 MNIST digits using Kuramoto dynamics. 
+Calling `python run.py --name D_search` will run one version of the above experiment for each setting of the `time_weight` parameter as it is varied from 0 to 5.
 
-## Running general experiments
-To design an experiment, add experiment details to the config file `experiments.cfg`. The expexperiment name should be the section header. Then, you can run your experiment by calling `python run.py --name <my_experiment_name>`. Here is a comprehensive list of experimental parameters. Please note that this project is early in development and not all parameter combinations have been tested or debugged: 
+## Running a simple experiments
+By "simple experiment", we mean one in which a single model is trained for one set of hyperparameters. To design an experiment, add experiment details to the config file `experiments.cfg`. The expexperiment name should be the section header. Then, you can run your experiment by calling `python run.py --name <my_experiment_name>`. Here is a comprehensive list of experimental parameters. Please note that this project is early in development and not all parameter combinations have been tested or debugged: 
 
 * data_name- The name of the folder containing your data in data_cifs/yuwei/osci_save/data
 * segments- The number of segments in the data. For now, this is constant across the dataset
@@ -39,5 +40,5 @@ To design an experiment, add experiment details to the config file `experiments.
 * depth- Number of layers in the net
 * kernel_size- Size of the kernels in a layer. Possibly a tuple for multi-scale models, but this has not been implemented.
 
-## Important notes
-Soon, a second type of experiment will be added in which several sub-experiments are run in sequence in order to explore a particular hyperparameter.  
+## Running a search experiment
+By "search exerpiment", we mean one in which several models sent to difference devices are trained as one hyperparameter, called the `search_parameter`, is varied. The section header for such an experiment in the config file must end in '_search'. You must also specify a `sub_experiment`, which should be the section header for a simple experiment, and a `search_parameter`, which should be the name of one of the parameters listed above. The values this parameter will assume during the search should be provided under the key `search_values` in the form of a list as should the device indices corresponding to the machine you'd like each sub-experiment to run on.  
