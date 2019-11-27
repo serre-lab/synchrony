@@ -111,6 +111,7 @@ class Unet(KuraNet):
                                           (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
+        ipdb.set_trace()
         phase_list = self.evolution(x)
         return phase_list, x
 
