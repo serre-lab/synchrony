@@ -13,7 +13,7 @@ def rand_crop(img, side=256):
     crop_corner = [np.random.randint(dim - side) for dim in sz]
     return img[crop_corner[0]:crop_corner[0] + side, crop_corner[1]:crop_corner[1] + side, :]
 
-def generate(number, data_kind='train', img_side=256, texture_number=4, gray=True, display=False, save_dir='/media/data_cifs/yuwei/oscsi_save/data/composite_textures_mini'):
+def generate(number, data_kind='train', img_side=256, texture_number=4, gray=True, display=False, save_dir='/media/data_cifs/yuwei/osci_save/data/composite_textures_mini'):
     data_dir = os.path.join(os.path.expanduser('~'), 'data', 'dtd', 'images')
     save_dir = os.path.join(save_dir, str(texture_number), data_kind, '0')
     if not os.path.exists(save_dir):
