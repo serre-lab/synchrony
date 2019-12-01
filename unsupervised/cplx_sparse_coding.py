@@ -34,8 +34,13 @@ def arg(z):
     z_imag = z[:,1,...]
     return torch.atan2(z_imag,z_real)
 
-def weighted_frame_potential(z, batch_reduce=None):
-    pairwise_inp = torch.einsum('bci,bcj->bij',z,z)
+def phasor(z):
+    phi = arg(z)
+    return torch.cat((torch.cos(phi), torch.sin(phi)),dim=1)
+
+def frame_potential(z, weighted=True, batch_reduce=None):
+    z = z if weighted else phasor(z)
+    pairwise_inp = torch.einsum('bci,bcj->bij',z,z) / z.shape[1]**2
     if batch_reduce==None:
         return (torch.abs(pairwise_inp)**2).sum((1,2)) 
     elif batch_reduce=='mean':
@@ -43,20 +48,20 @@ def weighted_frame_potential(z, batch_reduce=None):
     elif batch_reduce=='sum':
         return (torch.abs(pairwise_inp)**2).sum()
 
-def energy(x, Phi, w):
+def energy(x, Phi, w, weighted=True):
     # Reconstruction
-    Phi = torch.cat((Phi.unsqueeze(0), torch.zeros_like(Phi.unsqueeze(0))), dim=0)
+    Phi = Phi.unsqueeze(0).repeat(2,1,1)
     reconstruction = torch.einsum('bcm,cmn->bcn',w,Phi)
     gauss_energy = lp(rho(reconstruction) - x,  p=2, batch_reduce=None)
     # Sparsity
     sparsity = lp(rho(w),p=1,batch_reduce=None)
     
     # Desynchrony
-    fp = weighted_frame_potential(w)
+    fp = frame_potential(w, weighted=weighted)
     
     return gauss_energy, sparsity, fp 
 
-def optimize_codes(batch, Phi, code_size, lr, gamma1=1e-3, gamma2=1e-3, num_steps=50):
+def optimize_codes(batch, Phi, code_size, lr, gamma1=1e-3, gamma2=1e-3, num_steps=50, weighted=True):
     batch_size = batch.shape[0]
     init_w = torch.normal(0,1,size=(batch_size, 2, code_size))
     w = Variable(init_w, requires_grad=True)
@@ -67,7 +72,7 @@ def optimize_codes(batch, Phi, code_size, lr, gamma1=1e-3, gamma2=1e-3, num_step
     inner_fp = []
     for n in range(num_steps):
         optim_in.zero_grad()
-        ge, sp, fp = energy(batch.reshape(batch_size,-1), Phi, w)
+        ge, sp, fp = energy(batch.reshape(batch_size,-1), Phi, w, weighted=weighted)
         loss = (ge + gamma1*sp + gamma2*fp).mean()
         loss.backward()
         inner_loss.append(loss.data.cpu().numpy())
@@ -78,7 +83,9 @@ def optimize_codes(batch, Phi, code_size, lr, gamma1=1e-3, gamma2=1e-3, num_step
 
     return w.data, [inner_loss, inner_ge, inner_sp, inner_fp]
 
-def optimize_dict(dl, save_dir, data_size, code_size=64, lr=[1e-1,1e-3], gamma1=1e-3, gamma2=1e-3, num_epochs=10, num_steps=50, show_every=25, device='cpu'):
+def optimize_dict(dl, save_dir, data_size, code_size=64, lr=[1e-3,1e-1], gamma1=1e-3, gamma2=1e-3, num_epochs=10, num_steps=50, weighted=True, show_every=25, device='cpu'):
+    '''Learn a sparse dictionary of features '''
+
     lr1, lr2 = lr
     init_Phi = torch.normal(0,1e-1, size=(code_size, data_size))
     Phi = Variable(init_Phi, requires_grad=True)
@@ -94,8 +101,8 @@ def optimize_dict(dl, save_dir, data_size, code_size=64, lr=[1e-1,1e-3], gamma1=
             batch = batch.to(device).float()
             #if len(batch.shape) > 3:
             optim_out.zero_grad()
-            w, inner_energies = optimize_codes(batch, Phi.data, code_size, lr2, gamma1=gamma1,gamma2=gamma2,num_steps=num_steps)
-            ge, sp, fp = energy(batch.reshape(batch.shape[0],-1), Phi, w)
+            w, inner_energies = optimize_codes(batch, Phi.data, code_size, lr2, gamma1=gamma1,gamma2=gamma2,num_steps=num_steps, weighted=weighted)
+            ge, sp, fp = energy(batch.reshape(batch.shape[0],-1), Phi, w, weighted=weighted)
             loss = (ge + gamma1*sp + gamma2*fp).mean()
             loss.backward()
             outer_loss.append(loss.data.cpu().numpy())
@@ -105,7 +112,7 @@ def optimize_dict(dl, save_dir, data_size, code_size=64, lr=[1e-1,1e-3], gamma1=
             optim_out.step()
 
             if counter%show_every == 0:
-               print('Total loss at interation {} is {}'.format(counter,loss.data.cpu().numpy()))
+               print('Total loss at iteration {} is {}'.format(counter,loss.data.cpu().numpy()))
                disp(Phi, save_dir, batch, w, inner_energies, [outer_loss, outer_ge, outer_sp, outer_fp])
             counter+=1
     return outer_loss
@@ -126,7 +133,7 @@ def disp(Phi, save_dir, batch, w, inner_energies, outer_energies):
     plt.close()
 
     fig, axes = plt.subplots(1,2)
-    Phi = torch.cat((Phi.unsqueeze(0), torch.zeros_like(Phi.unsqueeze(0))), dim=0)
+    Phi = Phi.unsqueeze(0).repeat(2,1,1)
     img = torch.cat((batch[0,0,...].unsqueeze(0), torch.zeros_like(batch[0,0,...].unsqueeze(0))), dim=0).data.cpu().numpy()
     reconstruction = torch.einsum('bcm,cmn->bcn',w,Phi)[0,...].reshape(2,batch.shape[2], batch.shape[3]).data.cpu().numpy()
     arrays = [img, reconstruction]
@@ -138,17 +145,16 @@ def disp(Phi, save_dir, batch, w, inner_energies, outer_energies):
    
 if __name__=='__main__':
     save_dir = '/home/matt/figs/synch_learn/sparse'
-    ipdb.set_trace()
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+    weighted=True
+    lr = [1e-3, 1e-1]
+    gamma1 = 5e-2
+    gamma2 = 1e-2
     subprocess.call('rm {}/*.png'.format(save_dir), shell=True)    
-    kernel_size=12
-    num_features=64 # Number of image patches = 2*sum_i=1^nb (kernel_size choose i)
-    #TODO Make real dataset analgoues
-    #TODO: Make modulus biases
     #ds = datasets.DatasetFolder('/home/matt/data/synch_data/PHASE_BARS/{}'.format(nb), np.load, extensions=('npy')) 
     ds = datasets.MNIST('/home/matt/data/synch_data/', train=True, download=True,
-                                    transform=transforms.ToTensor())
+                                    transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]))
     dl = DataLoader(ds, batch_size=100, shuffle=True)
-    outer_energy = optimize_dict(dl, save_dir, 784)
+    outer_energy = optimize_dict(dl, save_dir, 784, lr=lr, gamma1=gamma1, gamma2=gamma2, weighted=weighted)
     np.save('/home/matt/figs/synch_learn/energy_{}.npy'.format(run),outer_energy)
