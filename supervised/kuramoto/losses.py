@@ -77,6 +77,16 @@ def exinp_integrate_torch2(phase, mask, transform, device):
     return prod.sum(2).sum(1) / torch.abs(torch.sign(prod)).sum(2).sum(1)
 
 
+def coupling_regularizer(coupling, mask, device):
+    coupling = coupling.to(device)
+    mask = torch.transpose(mask.to(device), 1, 2)
+    prod = (torch.bmm(coupling, mask) * (1 - mask)).sum(2, keepdim=True)
+
+    return \
+        (mask.sum(1, keepdim=True) * torch.bmm(torch.transpose(prod ** 2, 1, 2), mask) -
+         torch.bmm(torch.transpose(prod, 1, 2), mask) ** 2).squeeze().sum(1) * 0.5 / ((mask.sum(1) - 1) * mask.sum(1)).sum(1)
+
+
 def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Get image parameters
 
