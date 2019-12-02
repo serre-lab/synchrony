@@ -48,8 +48,8 @@ def sw_connectivity(img_side, num_cn, critic_dist):
     return connectivity
 
 # check valid file function
-def valid_file(file_path, train_data_num):
-    if (int(file_path[-8:-4]) < train_data_num) and file_path.lower().endswith('npy'):
+def valid_file(file_path):
+    if (int(file_path[-8:-4]) < 10000) and file_path.lower().endswith('npy'):
         return True
     else:
         return False
