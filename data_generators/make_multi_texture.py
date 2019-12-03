@@ -45,7 +45,6 @@ def generate(number, data_kind='train', img_side=256, texture_number=4, gray=Tru
             plt.savefig(os.path.join(os.path.expanduser('~'), 'texture.png'))
             ipdb.set_trace()
         img_and_mask = np.concatenate((composite, np.array(masks)), axis=0) 
-        ipdb.set_trace()
         file_name = os.path.join(save_dir, 'img_%04d.npy' % n)
         np.save(file_name, img_and_mask)
 if __name__=='__main__':

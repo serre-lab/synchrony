@@ -46,3 +46,10 @@ def sw_connectivity(img_side, num_cn, critic_dist):
         sorted(np.delete(range(img_side ** 2), connectivity[i, ...]),
 	    key=lambda k: np.random.random())[:int(num_cn / 2 + 1)]
     return connectivity
+
+# check valid file function
+def valid_file(file_path):
+    if (int(file_path[-8:-4]) < 10000) and file_path.lower().endswith('npy'):
+        return True
+    else:
+        return False
