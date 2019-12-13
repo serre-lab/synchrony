@@ -120,8 +120,9 @@ class polyomino_scenes(object):
 
 def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, data_kind='train',save_dir='/media/data_cifs/yuwei/osci_save/data/polyominoes', display=False):
         rot_string = 'fixed' if rotation else 'free' 
+        size_string = 'large' if img_side >= 32 else 'small'
         # Specify save dir
-        save_dir = os.path.join(save_dir, str(n), str(num_objects), rot_string, data_kind)
+        save_dir = os.path.join(save_dir, str(n), str(num_objects), rot_string, size_string, data_kind)
 
         # Object which contains actual polyominoes
         generator = polyomino_scenes(n, img_side, num_objects, free=rotation)
@@ -205,7 +206,7 @@ if __name__ == '__main__':
     num_imgs = 2500
     rotations = [True, False]
     data_kind = ['train', 'test']
-    img_side = 32
+    img_side = 16
     display = False
     for n in ns:
         for o in num_objects:
