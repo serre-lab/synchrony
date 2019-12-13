@@ -119,7 +119,7 @@ class polyomino_scenes(object):
         return fp
 
 def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, data_kind='train',save_dir='/media/data_cifs/yuwei/osci_save/data/polyominoes', display=False):
-        rot_string = 'fixed' if rotation else 'free' 
+        rot_string = 'free' if rotation else 'fixed' 
         size_string = 'large' if img_side >= 32 else 'small'
         # Specify save dir
         save_dir = os.path.join(save_dir, str(n), str(num_objects), rot_string, size_string, data_kind)
