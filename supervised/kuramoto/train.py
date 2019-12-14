@@ -11,6 +11,7 @@ from tqdm import tqdm
 import display as disp
 import sys
 from utils import *
+import ipdb
 import warnings
 warnings.filterwarnings('ignore')
 """
@@ -32,7 +33,7 @@ parser.add_argument('--start_filts', type=int, default=32)
 parser.add_argument('--depth', type=int, default=2)
 parser.add_argument('--out_channels', type=int, default=32)
 parser.add_argument('--split', type=int, default=4)
-parser.add_argument('--kernel_size', type=int, default=5)
+parser.add_argument('--kernel_size', type=str, default=5)
 parser.add_argument('--num_cn', type=int, default=8)
 parser.add_argument('--critical_dist', type=int, default=2)
 parser.add_argument('--phase_initialization', type=str, default='random')
@@ -58,6 +59,7 @@ parser.add_argument('--sparsity_weight', type=float, default=1e-5)
 parser.add_argument('--transform', type=str, default='linear')
 
 args = parser.parse_args()
+args.kernel_size = [int(k) for k in args.kernel_size.split(',')]
 
 if args.interactive:
     import matplotlib.pyplot as plt
@@ -72,7 +74,6 @@ else:
 if not args.device is not 'cpu':
     gpu_num = torch.cuda.device_count()
     print("Assigned {} GPUs".format(gpu_num))
-
  ######################
 # parameters
 num_test = 1000
