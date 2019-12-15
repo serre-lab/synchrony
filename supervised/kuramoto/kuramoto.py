@@ -26,6 +26,7 @@ class Kuramoto(object):
                  record_steps=10,
                  anneal=0.0,
                  phase_initialization = 'random',
+                 walk_step=.1,
                  intrinsic_frequencies = 'zero',
                  connectivity=8,
                  update_rate=0.1,
@@ -48,7 +49,7 @@ class Kuramoto(object):
         self.device = device
 
         self.connectivity = connectivity
-        self.phase_init(initialization=phase_initialization)
+        self.phase_init(initialization=phase_initialization, walk_step=walk_step)
         self.frequency_init(initialization=intrinsic_frequencies)
 
     def phase_init(self, initialization='random', **kwargs):
@@ -64,9 +65,10 @@ class Kuramoto(object):
         elif initialization == 'random_walk':
             self.current_phase = 2*np.pi * torch.rand((self.batch_size,self.N)).to(self.device).float()
             self.gamma = kwargs['walk_step']
-            self.phase_0 = def(): 
-                               self.current_phase+= self.gamma*2*np.pi * torch.rand((self.batch_size,self.N)).to(self.device).float()
-                               return self.current_phase
+            def walk(): 
+                self.current_phase+= self.gamma*2*np.pi * torch.rand((self.batch_size,self.N)).to(self.device).float()
+                return self.current_phase
+            self.phase_0 = walk
         return True
 
     def frequency_init(self, initialization='zero'):

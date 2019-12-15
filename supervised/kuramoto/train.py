@@ -42,6 +42,7 @@ parser.add_argument('--update_rate', type=float, default=1.6)
 parser.add_argument('--small_world', type=bool, default=False)
 parser.add_argument('--time_steps', type=int, default=8)
 parser.add_argument('--record_steps', type=int, default=8)
+parser.add_argument('--walk_step', type=float, default=.1)
 
 # Data parameters
 parser.add_argument('--img_side', type=int, default=32)

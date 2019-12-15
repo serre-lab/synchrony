@@ -5,14 +5,14 @@ import losses as ls
 import ipdb
 
 class KuraNet(nn.Module):
-    def __init__(self, img_side, connectivity, batch_size=32, device='cpu', update_rate=.1, anneal=0, time_steps=10, record_steps=10, phase_initialization='random', intrinsic_frequencies='zero'):
+    def __init__(self, img_side, connectivity, batch_size=32, device='cpu', update_rate=.1, anneal=0, time_steps=10, record_steps=10, phase_initialization='random', walk_step=.1, intrinsic_frequencies='zero'):
         super(KuraNet, self).__init__()
 
         self.img_side = img_side
         self.connectivity = connectivity
         osci = km(img_side ** 2, update_rate=update_rate, batch_size=batch_size,
                                   anneal=anneal, time_steps=time_steps, connectivity=connectivity,
-                                  record_steps=record_steps, phase_initialization=phase_initialization, device=device, intrinsic_frequencies=intrinsic_frequencies)
+                                  record_steps=record_steps, phase_initialization=phase_initialization, walk_step=walk_step, device=device, intrinsic_frequencies=intrinsic_frequencies)
         self.evolution = osci.evolution
         #osci.set_ep(update_rate)
         #osci.phase_init(initialization=initialization)
@@ -134,7 +134,7 @@ class simple_conv(KuraNet):
         """
         super(simple_conv, self).__init__(args.img_side, connectivity, batch_size=args.batch_size, update_rate = args.update_rate,
                                    anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, 
-                                   phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+                                   phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
         self.connections = connectivity
         self.out_channels = args.out_channels
