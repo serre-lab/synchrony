@@ -136,12 +136,12 @@ class simple_conv(KuraNet):
                                    anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, 
                                    phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
-        self.connections = connections
-        self.out_channels = out_channels
-        self.split = split
+        self.connections = connectivity
+        self.out_channels = args.out_channels
+        self.split = args.split
         self.convs1 = []
         self.convs2 = []
-        self.depth = depth
+        self.depth = args.depth
 
         args.start_filts = int(args.start_filts / 2)
         for i in range(args.depth):

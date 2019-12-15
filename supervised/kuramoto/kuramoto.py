@@ -51,16 +51,22 @@ class Kuramoto(object):
         self.phase_init(initialization=phase_initialization)
         self.frequency_init(initialization=intrinsic_frequencies)
 
-    def phase_init(self, initialization='random'):
+    def phase_init(self, initialization='random', **kwargs):
         if initialization == 'random':
             self.phase_0 = lambda : 2*np.pi * torch.rand((self.batch_size, self.N)).to(self.device).float()
         elif initialization == 'fixed':
-            self.fixed_phase = 2*np.pi * torch.rand((1,self.N)).repeat(self.batch_size,1).to(self.device).float()
-            self.phase_0 = lambda : self.fixed_phase
+            self.current_phase = 2*np.pi * torch.rand((1,self.N)).repeat(self.batch_size,1).to(self.device).float()
+            self.phase_0 = lambda : self.current_phase
         elif initialization == 'gaussian':
             self.phase_0 = lambda : torch.normal(0., .1, (self.batch_size, self.N)).to(self.device).float()
         elif initialization == 'categorical':
             self.phase_0 = lambda : torch.randint(0, 4, (self.batch_size, self.N)).to(self.device).float() * 2*np.pi / 4.
+        elif initialization == 'random_walk':
+            self.current_phase = 2*np.pi * torch.rand((self.batch_size,self.N)).to(self.device).float()
+            self.gamma = kwargs['walk_step']
+            self.phase_0 = def(): 
+                               self.current_phase+= self.gamma*2*np.pi * torch.rand((self.batch_size,self.N)).to(self.device).float()
+                               return self.current_phase
         return True
 
     def frequency_init(self, initialization='zero'):
