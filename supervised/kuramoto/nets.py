@@ -136,7 +136,7 @@ class simple_conv(KuraNet):
                                    anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, 
                                    phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
-        self.connections = connectivity
+        self.num_cn = args.num_cn
         self.out_channels = args.out_channels
         self.split = args.split
         self.convs1 = []
@@ -178,7 +178,7 @@ class simple_conv(KuraNet):
         x = self.conv_final(x)
 
         x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
-                                          (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.connections)
+                                          (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
 

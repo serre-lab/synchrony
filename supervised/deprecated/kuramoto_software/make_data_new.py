@@ -8,12 +8,13 @@ else:
     import matplotlib.pyplot as plt
 import numpy as np
 from operator import itemgetter
+from itertools import imap, groupby, chain, imap
+from sys import argv
+from array import array
+import wget
 import ipdb
-from itertools import groupby, chain
-try:
-    from iterbools import imap
-except ImportError:
-    imap = map
+import os
+import subprocess
 
 def concat_map(func, it):
     return list(chain.from_iterable(imap(func, it)))
@@ -83,12 +84,14 @@ def rank(n):
     return unique(concat_map(new_polys, rank(n - 1)))
 
 class polyomino_scenes(object):
-    def __init__(self, n, img_side, num_objects, batch_size, rotation=True):
+    def __init__(self, n, img_side, num_objects, batch_size, rotation=True, noisy=False):
+        # TODO: Rotation doesn't work yet
         self.n = n
         self.img_side = img_side
         self.num_objects = num_objects
         self.batch = batch_size
         self.rotation = rotation
+        self.noisy    = noisy
         self.n_ominoes = self.generate_free_polyominoes(self.n)
         self.num_n_ominoes = len(self.n_ominoes)
 
@@ -135,7 +138,7 @@ class polyomino_scenes(object):
             for n in range(self.num_objects - 1):
                 ind = np.random.randint(len(self.n_ominoes))
                 poly = self.n_ominoes[ind]
-                overlap = True
+                overlap=True
                 while overlap:
                     template = bgrnd.copy()
                     if self.rotation:
@@ -150,11 +153,27 @@ class polyomino_scenes(object):
                         # key = 'diff_group_{}'.format(n - num_same + 1) if n >= num_same - 1 else 'same_group'
                         dicts[str(ind)].extend(list(map(self._coord2idx, self.convert_coords(global_coords))))
                 canvas += template
-            batch.append(canvas)
+
             bgrnd_coords = np.where(canvas == 0.0)
+            if self.noisy:
+                canvas = np.where(canvas == 0.0, .25*np.random.rand(self.img_side, self.img_side), canvas)
+            batch.append(canvas)
             dicts['bgrnd'].extend(list(map(self._coord2idx, np.transpose(bgrnd_coords))))
             grouping.append(dicts)
         return np.array(batch), grouping
+
+    def mask_pro(self, group_dict):
+        masks = []
+        group_names = group_dict.keys()
+        for group_name in group_names:
+            group_idxes = group_dict[group_name]
+            mask = np.zeros((self.img_side**2,))
+            mask[group_idxes] = 1.0
+            masks.append(mask)
+        return masks
+
+
+
 
     def _coord2idx(self, coord):
         return int(coord[0] * self.img_side + coord[1])
@@ -199,10 +218,31 @@ def generate_test_img(n, num, img_side):
     generator = polyomino_scenes(n, img_side, num, 1, True)
     return generator.generate_batch()
 
+def mask_pro(group_dict, img_side):
+    masks = []
+    group_names = group_dict.keys()
+    for group_name in group_names:
+        group_idxes = group_dict[group_name]
+        mask = np.zeros((img_side**2,))
+        mask[group_idxes] = 1.0
+        masks.append(mask)
+    return masks
+
+def download_textures(save_dir):
+    print('Downloading textures')
+    url = 'https://www.robots.ox.ac.uk/~vgg/data/dtd/download/dtd-r1.0.1.tar.gz'
+    tar_path= os.path.join(save_dir, 'dtd.tar.gz')
+    if not os.path.exists(tar_path):
+        wget.download(url, tar_path)
+    subprocess.call('tar xvzf {} -C {}&'.format(tar_path, save_dir), shell=True)
 
 if __name__ == '__main__':
-    generator = polyomino_scenes(5, 16, 4, 1, True)
-    canvas, dicts = generator.generate_batch()
+    save_dir = os.path.join(os.path.expanduser('~'), 'data')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    download_textures(save_dir)
+    #generator = polyomino_scenes(5, 16, 4, 1, True)
+    #canvas, dicts = generator.generate_batch()
 
-    print(canvas)
-    print('\n'.join(map(str, dicts)))
+    #print(canvas)
+    #print('\n'.join(map(str, dicts)))
