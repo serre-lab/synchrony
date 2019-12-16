@@ -7,7 +7,7 @@ import json, ast
 import ipdb
 
 meta_parser = argparse.ArgumentParser()
-meta_parser.add_argument('--name', type=str, default='Multi_MNIST')
+meta_parser.add_argument('--name', type=str, default='Texture64')
 meta_args = meta_parser.parse_args()
 
 config = ConfigParser()
@@ -31,8 +31,9 @@ if meta_args.name[-6:] == 'search':
         print('Running {} experiment with value {} on device {}'.format(search_parameter,value,device_indices[v]))
         #os.environ["CUDA_VISIBLE_DEVICES"]=str(device_indices[v])
         arg_strings = ['--{} {}'.format(key, value) + ' ' for (key, value) in sub_args.items()] 
-        process_string = 'CUDA_VISIBLE_DEVICES={} python train.py '.format(device_indices[v])
+        process_string = 'CUDA_VISIBLE_DEVICES={}, python train.py '.format(device_indices[v])
         for st in arg_strings: process_string += st
+        ipdb.set_trace()
         subprocess.call(process_string + '&', shell=True)    
     
 else:

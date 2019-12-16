@@ -111,7 +111,6 @@ class Unet(KuraNet):
                                           (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
-        ipdb.set_trace()
         phase_list = self.evolution(x)
         return phase_list, x
 
@@ -205,13 +204,13 @@ class criterion(nn.Module):
         # losses will be 1d, with its length = episode length
         if valid:
             losses = \
-                ls.exinp_integrate_torch(torch.cat(phase_list, dim=0).detach(),
+                ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
                                          mask.repeat(len(phase_list), 1, 1).detach(),
                                          transform,
                                          device).reshape(len(phase_list), mask.shape[0]).mean(1)
         else:
             losses = \
-                ls.exinp_integrate_torch(torch.cat(phase_list, dim=0),
+                ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
                                          mask.repeat(len(phase_list), 1, 1),
                                          transform,
                                          device).reshape(len(phase_list), mask.shape[0]).mean(1)

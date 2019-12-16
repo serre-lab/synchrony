@@ -148,7 +148,7 @@ for epoch in range(args.train_epochs):
         op.step()
        
         # visualize training
-        if counter % args.show_every == 0:
+        if step % args.show_every == 0:
             train_ind = np.random.randint(args.batch_size)
             train_image = batch[train_ind].cpu().data.numpy()
             train_mask = mask[train_ind].cpu().unsqueeze(0).data.numpy()
@@ -158,12 +158,13 @@ for epoch in range(args.train_epochs):
             coupling_history.append(coupling_train_show)
             train_phase_list = np.array([phase.cpu().data.numpy()[train_ind, :] for phase in phase_list_train])
             show(displayer, train_phase_list, train_image, train_mask, coupling_train_show, save_dir,
-                'train{}'.format(epoch), args.segments, args.img_side)
-        counter+=1
+                'train{}_{}'.format(epoch,step), args.segments, args.img_side)
+        if step > 1:
+            break
     for step, (test_data, _) in tqdm(enumerate(testing_loader)):
         # cross-validation
-        batch = test_data[:, :, 0, ...].transpose(2,1).float().to(args.device)
-        mask = test_data[:, :,1:, ...].transpose(2,1).reshape(-1, args.segments, args.img_side * args.img_side).float().to(args.device)
+        batch = test_data[:,  0, ...].float().to(args.device)
+        mask = test_data[:, 1:, ...].reshape(-1, args.segments, args.img_side * args.img_side).float().to(args.device)
 
         phase_list_test, coupling_test = model(batch.unsqueeze(1))
 
@@ -176,21 +177,22 @@ for epoch in range(args.train_epochs):
         loss_test_history.append(tavg_loss_test.cpu().data.numpy())
 	loss_history.append(tavg_loss.cpu().data.numpy())
 		
+        if step % args.show_every == 0:
+            # visualize validation and save
+            # validation example, save its coupling matrix
+            test_ind = np.random.randint(args.batch_size)
+            test_image = batch[test_ind].cpu().data.numpy()
+            test_mask = mask[test_ind].cpu().unsqueeze(0).data.numpy()
+            coupling_test_show = \
+                torch.zeros(1, args.img_side ** 2, args.img_side ** 2).to('cpu').scatter_(dim=2, index=connectivity.cpu(),
+                                                                     src=coupling_test[test_ind].cpu().unsqueeze(
+                                                                         0)).data.numpy()[0]
+            test_phase_list = np.array([phase.cpu().data.numpy()[test_ind, :] for phase in phase_list_test])
+            show(displayer, test_phase_list, test_image, test_mask, coupling_test_show, save_dir, 'test{}_{}'.format(epoch,step), args.segments, args.img_side)
 	if step*args.batch_size > num_test:
 	    break
 
-    # visualize validation and save
-    # validation example, save its coupling matrix
-    valid_ind = np.random.randint(args.batch_size)
-    valid_image = cv_image[valid_ind].cpu().data.numpy()
-    valid_mask = cv_mask[valid_ind].cpu().unsqueeze(0).data.numpy()
-    coupling_valid_show = \
-       torch.zeros(1, args.img_side ** 2, args.img_side ** 2).to('cpu').scatter_(dim=2, index=args.num_cn,
-                                                                     src=coupling_cv[valid_ind].cpu().unsqueeze(
-                                                                         0)).data.numpy()[0]
-    valid_phase_list = np.array([phase.cpu().data.numpy()[valid_ind, :] for phase in phase_list_cv])
-    show(displayer, valid_phase_list, valid_image, valid_mask, coupling_valid_show, save_path,
-            'valid{}'.format(epoch))
+
     # save file s
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
         'optimizer_state_dict': op.state_dict(),

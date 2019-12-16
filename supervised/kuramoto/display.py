@@ -372,7 +372,7 @@ class displayer(object):
             raise ValueError('No phases provided')
 
     def max_partition_freq(self, mask):
-        partition_phases = [self.phases[:,]]
+        partition_phases = [self.phases[m] for m in mask]
 
     def static_evol(self, nrows, ncols, input, save_name, mask):
         interval = int(self.phases.shape[0] / 5)
