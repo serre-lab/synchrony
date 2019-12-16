@@ -102,9 +102,9 @@ testing_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=Tr
 # connectivity
 print('Generating fixed adjancency matrix.')
 if args.small_world:
-    connectivity = sw_connectivity(args.img_side, args.num_cn, args.critical_dist)
+    connectivity = generate_connectivity(args.img_side, args.num_cn, args.critical_dist, 'small_world')
 else:
-    connectivity = np.ones((args.img_side ** 2, num_cn))
+    connectivity = generate_connectivity(args.img_side, args.num_cn, args.critical_dist, 'local')
 connectivity = torch.tensor(connectivity).long().unsqueeze(0).to('cpu')
 batch_connectivity = connectivity.repeat(args.batch_size, 1, 1).to(args.device)
 
