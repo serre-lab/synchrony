@@ -122,10 +122,16 @@ def generate_connectivity(num_cn, img_side,
             s = int(s)
         if (img_side % s) != 0.:
             raise ValueError('Number of global oscillator should be a dividend of img_side')
+
         connectivity = np.zeros((img_side ** 2, num_cn + 1))
         seq = np.arange(img_side ** 2)
         if rp_field == 'random':
             np.random.shuffle(seq)
+        elif rp_field == 'arange':
+            seq = np.concatenate(np.split(np.stack(np.split(seq.reshape(img_side, img_side), s, axis=1),
+                                                   axis=0), s, axis=1), axis=0).reshape(-1)
+        else:
+            raise ValueError('Receptive field type not understood')
     else:
         connectivity = np.zeros((img_side ** 2, num_cn))
 
@@ -147,9 +153,7 @@ def generate_connectivity(num_cn, img_side,
             connectivity[i, -1] = np.argwhere(seq == i)[0][0] // int(img_side ** 2 / num_global_control) + img_side ** 2
 
     if num_global_control > 0:
-        global_connectivity = np.concatenate(
-            np.split(np.stack(np.split(seq.reshape(img_side, img_side), s, axis=1), axis=0),
-                     s, axis=1), axis=0).reshape(num_global_control, -1)
+        global_connectivity = np.stack(np.split(seq, num_global_control, axis=0), axis=0)
         inner = np.tile(np.expand_dims(np.arange(num_global_control), axis=0),
                         (num_global_control, 1))[np.where(np.eye(num_global_control) == 0)].reshape(num_global_control,
                                                                                                     -1) + img_side ** 2

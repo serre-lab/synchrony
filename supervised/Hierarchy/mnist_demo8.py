@@ -99,9 +99,6 @@ else:
 print('network contains {} parameters'.format(net.count_parameters(model))) # parameter number
 time.sleep(2)
 
-loss_history = []
-loss_cv_history = []
-
 displayer = kv.displayer()
 op = tc.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -110,12 +107,17 @@ if args.model is not None:
     model.load_state_dict(checkpoint['model_state_dict'])
     op.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch']
+    loss_history = checkpoint['train_loss']
+    loss_cv_history = checkpoint['valid_loss']
     model.train()
 
     rand_phase = checkpoint['initial_phase']
     connectivity = checkpoint['connectivity']
     global_connectivity = checkpoint['gconnectivity']
 else:
+    start_epoch = 0
+    loss_history = []
+    loss_cv_history = []
     initial_phase = np.random.rand(1, img_side ** 2 + num_global_control) * 2 * np.pi
     rand_phase = tc.tensor(initial_phase).to('cpu')
     connectivity, global_connectivity = \
@@ -154,6 +156,7 @@ if keep_valid_data:
                                   img_side, group_size, valid=True)
 
 for epoch in tqdm(range(train_epochs)):
+    epoch += start_epoch + 1
     if shuffle:
         training_order = np.arange(train_data_num)
         np.random.shuffle(training_order)
