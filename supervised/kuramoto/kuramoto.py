@@ -35,7 +35,8 @@ class Kuramoto(object):
   
         self.N = oscillator_number
         self.batch_size = batch_size
-        self.ep = update_rate
+        self.update_rate = update_rate
+        self.eps = update_rate
         self.anneal = anneal
         self.time_steps = time_steps
         self.record_steps=record_steps
@@ -85,13 +86,13 @@ class Kuramoto(object):
         # 0, B-A, C-A
         # A-B, 0, C-B
         # A-C, B-C, 0
-        self.delta = self.ep * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.N - 1))
+        self.delta = self.eps * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.N - 1))
         self.phase = self.phase + self.delta + omega
         return self.phase
 
     def _update2(self, coupling, omega):
         diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
-        self.delta = self.ep * (torch.sum(coupling * torch.sin(diffs).gather(2, self.connectivity), dim=2) / coupling.shape[2])
+        self.delta = self.eps * (torch.sum(coupling * torch.sin(diffs).gather(2, self.connectivity), dim=2) / coupling.shape[2])
         self.phase = self.phase + self.delta + omega
         return self.phase
     
@@ -101,7 +102,7 @@ class Kuramoto(object):
         coupling = torch.zeros(coupling.shape[0],
                                coupling.shape[1],
                                coupling.shape[1]).to(self.device).scatter_(dim=2, index=self.connectivity, src=coupling)
-        self.delta = self.ep * \
+        self.delta = self.eps * \
                      (torch.bmm(coupling, torch.sin(self.phase).unsqueeze(2).float()).squeeze(2) * torch.cos(self.phase) -
                      torch.bmm(coupling, torch.cos(self.phase).unsqueeze(2).float()).squeeze(2) * torch.sin(self.phase)) / n
         self.phase = self.phase + self.delta + omega
@@ -112,6 +113,7 @@ class Kuramoto(object):
         # integrate the update3 function and offer a new variable 
         # record_step(default:1) which will set the number of how many steps to record from the last step
         self.phase = self.phase_0() 
+        self.eps = self.update_rate
         omega = self.omega()
         phase_list = [self.phase]
         for i in range(self.time_steps):
@@ -125,16 +127,8 @@ class Kuramoto(object):
             print('No updating')
     
     def eps_anneal(self, i):
-        self.ep = self.ep - self.anneal * float(i) * self.ep / self.time_steps
+        self.eps = self.eps - self.anneal * float(i) * self.eps / self.time_steps
         return True
-
-    def set_ep(self, updating_rate=None):
-        if updating_rate is not None:
-            self.ep = updating_rate
-        else:
-            self.ep = 0.1
-        return True
-
 
 if __name__ == '__main__':
     print('numpy version kuramoto dynamics simulation tool\n')

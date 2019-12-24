@@ -1,4 +1,4 @@
-import os
+import os, subprocess
 import nets
 import time
 import argparse
@@ -83,10 +83,14 @@ num_test = 1000
 # path
 load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data/', args.data_name, str(args.segments))
 save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/', args.exp_name)
+model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models/', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
 if not os.path.exists(save_dir):
-    os.mkdir(save_dir)
+    os.makedirs(save_dir)
+if not os.path.exists(model_dir):
+    os.makedirs(model_dir)
+subprocess.call('rm -rf {}'.format(os.path.join(save_dir, '*')), shell=True)
 		
 ######################
 # Load data
@@ -133,6 +137,7 @@ counter = 0
 for epoch in range(args.train_epochs):
     print('Epoch: {}'.format(epoch))
 
+    l=0
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
@@ -143,6 +148,7 @@ for epoch in range(args.train_epochs):
         tavg_loss = criterion(phase_list_train, mask, args.transform, args.device)
         tavg_loss = tavg_loss.mean() / norm
         tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
+        l+=tavg_loss.data.cpu().numpy()
 
         tavg_loss.backward()
         op.step()
@@ -159,8 +165,8 @@ for epoch in range(args.train_epochs):
             train_phase_list = np.array([phase.cpu().data.numpy()[train_ind, :] for phase in phase_list_train])
             show(displayer, train_phase_list, train_image, train_mask, coupling_train_show, save_dir,
                 'train{}_{}'.format(epoch,step), args.segments, args.img_side)
-        if step > 1:
-            break
+    loss_history.append(l / step)
+    l=0
     for step, (test_data, _) in tqdm(enumerate(testing_loader)):
         # cross-validation
         batch = test_data[:,  0, ...].float().to(args.device)
@@ -174,8 +180,7 @@ for epoch in range(args.train_epochs):
         tavg_loss_test = criterion(phase_list_test, mask, args.transform, args.device, True)
         tavg_loss_test = tavg_loss_test.mean() / norm
         tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
-        loss_test_history.append(tavg_loss_test.cpu().data.numpy())
-	loss_history.append(tavg_loss.cpu().data.numpy())
+        l+=tavg_loss_test.data.cpu().numpy()
 		
         if step % args.show_every == 0:
             # visualize validation and save
@@ -191,14 +196,14 @@ for epoch in range(args.train_epochs):
             show(displayer, test_phase_list, test_image, test_mask, coupling_test_show, save_dir, 'test{}_{}'.format(epoch,step), args.segments, args.img_side)
 	if step*args.batch_size > num_test:
 	    break
+    loss_history_test.append(l /step)
 
 
     # save file s
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
         'optimizer_state_dict': op.state_dict(),
         'initial_phase': rand_phase,
-        'connectivity': connectivity}, save_dir + '/model{}.pt'.format(epoch))
-    np.save('coupling.npy', np.array(coupling_history))
+        'connectivity': connectivity}, model_dir + '/model{}.pt'.format(epoch))
 
     plt.plot(np.array(loss_history))
     plt.plot(np.array(loss_test_history))
