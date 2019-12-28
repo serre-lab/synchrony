@@ -6,8 +6,53 @@ class NetProp():
         self.coupling_net = coupling_net
         
 
-    def create_graph()
+    def create_graph(self):
+        CM = self.coupling_net
+        N = len(CM)#number of nodes 
     
+        x = np.linspace(0,np.pi*2)
+        y = np.sin(x)
+        z = np.cos(x)
+        nodes = np.linspace(0,np.pi*2,N+1)
+        nodes = nodes[:-1]
+        points = np.array([np.sin(nodes), np.cos(nodes)])
+        plt.plot(y,z)
+        plt.plot(points[0],points[1],'o')
+        plt.axis('equal')
+
+
+
+        for con in itertools.combinations(range(N),2):
+            i = con[0]
+            j = con[1]
+            x_i=points[:,i]
+            x_j=points[:,j]
+        #plt.plot([x_i[0],x_j[0]],[x_i[1],x_j[1]])
+            plt.annotate("", xy=(x_i[0], x_i[1]), xytext=(x_j[0], x_j[1]) ,
+                         arrowprops=dict(arrowstyle="->"))
+            plt.annotate("", xy=(x_j[0]+0.03, x_j[1]+0.03), xytext=(x_i[0]+0.03, x_i[1]+0.03) ,
+                         arrowprops=dict(arrowstyle="->"))
+
+            #plt.plot([x_j[0]+0.03,x_i[0]+0.03],[x_j[1]+0.03,x_i[1]+0.03])
+
+            #corroborate the the direction of arrow matches intended direction 
+
+
+            #last thing to do: use color to reflect weights
+            #i.e. generate color bar
+
+            #outline: 
+            min_weight = np.min(CM)  #or hard code these 
+            max_weight = np.max(CM)  #or hard code these
+
+
+
+
+
+        plt.show()
+
+
+
     def path_length(self, threshold):
         CN = self.coupling_net
     
@@ -20,13 +65,16 @@ class NetProp():
         #2) apply algorithm 
         
         #3) alternatively - always use Bellman Ford
+        
 
     def cluster_coefficient(self,threshold):
         
-    def inh_exc_r(self):
+    def inh_exc_ratio(self):
         inh = np.sum([i<0 for i in np.nditer(self.coupling_net)])
         exc = np.sum([i>0 for i in np.nditer(self.coupling_net)]) 
         #exc = self.coupling_net.size - inh #use this if no 0 couplings?
+       
+    def inh_exc_calculation 
 
 
 
