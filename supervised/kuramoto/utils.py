@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 
 plt.ioff()
 
-
-def show(displayer, phase_list, image, mask, coupling, path, name, group_size, img_side):
+def show(displayer, phase_list, image, mask, coupling, omega, path, name, group_size, img_side):
     colored_mask = (np.expand_dims(np.expand_dims(np.arange(group_size), axis=0), axis=-1) * mask / group_size).sum(1)
     displayer.set_phases(phase_list)
     displayer.set_masks(mask)
@@ -26,6 +25,13 @@ def show(displayer, phase_list, image, mask, coupling, path, name, group_size, i
     plt.savefig(path + '/coupling_' + name)
     plt.close()
 
+    im = plt.imshow(omega)
+    plt.title('Intrinsic Frequencies')
+    plt.gca().grid(False)
+    plt.axis('off')
+    plt.colorbar(im)
+    plt.savefig(path + '/frequencies_' + name)
+    plt.close()
 
 def sw_connectivity(img_side, num_cn, critic_dist):
     connectivity = np.zeros((img_side ** 2, num_cn))

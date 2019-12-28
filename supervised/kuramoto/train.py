@@ -124,11 +124,15 @@ else:
 time.sleep(2)
 
 loss_history = []
-loss_test_history = []
+loss_history_test = []
 coupling_history = []
 
 displayer = disp.displayer(interactive=args.interactive)
-op = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+if args.intrinsic_frequencies == 'learned':
+    params = tuple([q1 for q1 in model.parameters()] + [q2 for q2 in model.osci.freq_net.parameters()])
+else:
+    params = model.parameters()
+op = torch.optim.Adam(params, lr=args.learning_rate)
 
 ######################
 # training pipeline
@@ -143,7 +147,7 @@ for epoch in range(args.train_epochs):
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
 
         op.zero_grad()
-        phase_list_train, coupling_train = model(batch.unsqueeze(1))
+        phase_list_train, coupling_train, omega_train = model(batch.unsqueeze(1))
 
         tavg_loss = criterion(phase_list_train, mask, args.transform, args.device)
         tavg_loss = tavg_loss.mean() / norm
@@ -161,9 +165,9 @@ for epoch in range(args.train_epochs):
             coupling_train_show = \
                 torch.zeros(1, args.img_side ** 2, args.img_side ** 2).to('cpu').scatter_(dim=2, index=connectivity.cpu(),
                                                     src=coupling_train[train_ind].unsqueeze(0).cpu()).data.numpy()[0]
-            coupling_history.append(coupling_train_show)
             train_phase_list = np.array([phase.cpu().data.numpy()[train_ind, :] for phase in phase_list_train])
-            show(displayer, train_phase_list, train_image, train_mask, coupling_train_show, save_dir,
+            omega_train_show = omega_train[train_ind,...].reshape(args.img_side, args.img_side).detach().cpu().numpy()
+            show(displayer, train_phase_list, train_image, train_mask, coupling_train_show, omega_train_show, save_dir,
                 'train{}_{}'.format(epoch,step), args.segments, args.img_side)
     loss_history.append(l / step)
     l=0
@@ -172,7 +176,7 @@ for epoch in range(args.train_epochs):
         batch = test_data[:,  0, ...].float().to(args.device)
         mask = test_data[:, 1:, ...].reshape(-1, args.segments, args.img_side * args.img_side).float().to(args.device)
 
-        phase_list_test, coupling_test = model(batch.unsqueeze(1))
+        phase_list_test, coupling_test, omega_test = model(batch.unsqueeze(1))
 
         # phase.shape=(time, batch, N)
         # mask.shape=(time, batch, group, N)
@@ -192,8 +196,9 @@ for epoch in range(args.train_epochs):
                 torch.zeros(1, args.img_side ** 2, args.img_side ** 2).to('cpu').scatter_(dim=2, index=connectivity.cpu(),
                                                                      src=coupling_test[test_ind].cpu().unsqueeze(
                                                                          0)).data.numpy()[0]
+            omega_test_show = omega_test[test_ind,...].reshape(args.img_side, args.img_side).detach().cpu().numpy()
             test_phase_list = np.array([phase.cpu().data.numpy()[test_ind, :] for phase in phase_list_test])
-            show(displayer, test_phase_list, test_image, test_mask, coupling_test_show, save_dir, 'test{}_{}'.format(epoch,step), args.segments, args.img_side)
+            show(displayer, test_phase_list, test_image, test_mask, coupling_test_show, omega_test_show, save_dir, 'test{}_{}'.format(epoch,step), args.segments, args.img_side)
 	if step*args.batch_size > num_test:
 	    break
     loss_history_test.append(l /step)
@@ -202,11 +207,11 @@ for epoch in range(args.train_epochs):
     # save file s
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
         'optimizer_state_dict': op.state_dict(),
-        'initial_phase': rand_phase,
+        'initial_phase': args.phase_initialization,
         'connectivity': connectivity}, model_dir + '/model{}.pt'.format(epoch))
 
     plt.plot(np.array(loss_history))
-    plt.plot(np.array(loss_test_history))
+    plt.plot(np.array(loss_history_test))
     plt.title('Time Averaged Loss')
     plt.legend(['train', 'valid'])
     plt.savefig(save_dir + '/loss' + '.png')

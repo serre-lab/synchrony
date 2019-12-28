@@ -10,10 +10,10 @@ class KuraNet(nn.Module):
 
         self.img_side = img_side
         self.connectivity = connectivity
-        osci = km(img_side ** 2, update_rate=update_rate, batch_size=batch_size,
+        self.osci = km(img_side ** 2, update_rate=update_rate, batch_size=batch_size,
                                   anneal=anneal, time_steps=time_steps, connectivity=connectivity,
                                   record_steps=record_steps, phase_initialization=phase_initialization, walk_step=walk_step, device=device, intrinsic_frequencies=intrinsic_frequencies)
-        self.evolution = osci.evolution
+        self.evolution = self.osci.evolution
         #osci.set_ep(update_rate)
         #osci.phase_init(initialization=initialization)
 
@@ -95,6 +95,7 @@ class Unet(KuraNet):
         self.reset_params()
 
     def forward(self, x):
+        x_in = x
         encoder_outs = []
 
         for i, module in enumerate(self.down_convs):
@@ -111,8 +112,8 @@ class Unet(KuraNet):
                                           (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
-        phase_list = self.evolution(x)
-        return phase_list, x
+        phase_list, omega = self.evolution(x, batch=x_in)
+        return phase_list, x, omega
 
     @staticmethod
     def weights_init(m):
@@ -161,7 +162,7 @@ class simple_conv(KuraNet):
         self.reset_params()
 
     def forward(self, x):
-
+        x_in = x
         x1 = x
         x2 = x
         for i, module in enumerate(self.convs1):
@@ -181,8 +182,8 @@ class simple_conv(KuraNet):
 
         x = x / x.norm(p=2, dim=2).unsqueeze(2)
 
-        phase_list = self.evolution(x)
-        return phase_list, x
+        phase_list, omega = self.evolution(x, batch=x_in)
+        return phase_list, x, omega
 
     @staticmethod
     def weights_init(m):
@@ -194,6 +195,25 @@ class simple_conv(KuraNet):
         for i, m in enumerate(self.modules()):
             self.weights_init(m)
 
+class autoencoder(nn.Module):    
+    def __init__(self):
+        super(autoencoder,self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1,16, kernel_size=5),
+            nn.ReLU(True),
+            nn.Conv2d(16,8,kernel_size=5),
+            nn.ReLU(True))        
+
+        self.decoder = nn.Sequential(             
+            nn.ConvTranspose2d(8,16,kernel_size=5),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(16,1,kernel_size=5),
+            nn.ReLU(True))
+
+    def forward(self,x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 
 class criterion(nn.Module):
     def __init__(self, degree):

@@ -2,6 +2,7 @@ import numpy as np
 import copy
 from tqdm import tqdm
 import torch
+import nets
 import ipdb
 
 """
@@ -74,9 +75,12 @@ class Kuramoto(object):
 
     def frequency_init(self, initialization='zero'):
         if initialization == 'gaussian':
-            self.omega = lambda : 2*np.pi * torch.normal((self.batch_size, self.N)).to(self.device)
+            self.omega = lambda x : 2*np.pi * torch.normal((self.batch_size, self.N)).to(self.device)
         elif initialization == 'zero':
-            self.omega = lambda : torch.zeros((self.batch_size,self.N)).to(self.device)
+            self.omega = lambda x : torch.zeros((self.batch_size,self.N)).to(self.device)
+        elif initialization == 'learned':
+            self.freq_net = nets.autoencoder().to(self.device)
+            self.omega = lambda x : self.freq_net.forward(x).reshape(self.batch_size, -1)
         return True
 
     def _update1(self, coupling, omega):
@@ -108,13 +112,13 @@ class Kuramoto(object):
         self.phase = self.phase + self.delta + omega
         return self.phase
 
-    def evolution(self, coupling):
+    def evolution(self, coupling, batch=None):
 
         # integrate the update3 function and offer a new variable 
         # record_step(default:1) which will set the number of how many steps to record from the last step
         self.phase = self.phase_0() 
         self.eps = self.update_rate
-        omega = self.omega()
+        omega = self.omega(batch)
         phase_list = [self.phase]
         for i in range(self.time_steps):
             new = self.update(coupling, omega)
@@ -122,7 +126,7 @@ class Kuramoto(object):
             if i > (self.time_steps - 1 - self.record_steps):
                 phase_list.append(new)
         try:
-            return phase_list
+            return phase_list, omega
         except RuntimeError:
             print('No updating')
     

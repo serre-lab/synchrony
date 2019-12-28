@@ -25,7 +25,7 @@ class displayer(object):
 
         if id(phases) != id(None) & id(freqs) != id(None):
             self.phases = np.squeeze(np.array(phases, dtype=np.float32))
-            self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
+            #self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
             self.freqs = np.squeeze(np.array(freqs, dtype=np.float32))
 
             if masks is not None:
@@ -218,7 +218,7 @@ class displayer(object):
         return phase.reshape((nrows, ncols))
 
     def _ani_update(self, d, im, sc, tx1, tx2, tx3, tx4, ti, nrows, ncols):
-        data = np.concatenate((self.phases[d].reshape(-1, 1),
+        data = np.concatenate((self.phases[d].reshape(-1, 1) % ((2*np.pi) + 2*np.pi) % (2*np.pi),
                                np.ones_like(self.phases[d].reshape(-1, 1))),
                               axis=1)
 
@@ -332,7 +332,7 @@ class displayer(object):
             self.phases = np.squeeze(np.array(phases, dtype=np.float32))
         else:
             self.phases = None
-        self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
+        #self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
         return True
 
     def set_freqs(self, freqs=None):
