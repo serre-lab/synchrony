@@ -34,7 +34,7 @@ def read_data(data_inds, path, img_side, group_size, device='cuda', valid=False)
         return tc.tensor(images).float().detach().to(device), tc.tensor(masks).float().detach().to(device)
 
 
-def display(displayer, phase_list, images, masks, coupling, img_side, group_size, path, name, rp_field):
+def display(displayer, phase_list, images, masks, coupling, img_side, group_size, path, name):
     # randomly select images to display
     ind = np.random.randint(images.shape[0])
     image = images[ind].cpu().data.numpy()
@@ -45,8 +45,8 @@ def display(displayer, phase_list, images, masks, coupling, img_side, group_size
     colored_mask = (np.expand_dims(np.expand_dims(np.arange(group_size), axis=0), axis=-1) * mask / group_size).sum(1)
     displayer.set_phases(np_phase_list)
     displayer.set_masks(mask)
-    if rp_field == 'arange':
-        coupling_show(coupling, img_side, path, name)
+
+    coupling_show(coupling, img_side, path, name)
 
     if len(phase_list) > 4:
         displayer.static_evol(img_side, img_side, image, path + '/static_' + name, colored_mask)
@@ -59,7 +59,6 @@ def display(displayer, phase_list, images, masks, coupling, img_side, group_size
 def coupling_show(coupling, img_side, path, name):
     if coupling.shape[0] != img_side ** 2:
         num_global = coupling.shape[0] - img_side ** 2
-        s = int(np.sqrt(num_global))
 
         # first layer
         im = plt.imshow(coupling[:-num_global, :-num_global].reshape(img_side ** 2, img_side ** 2))
@@ -78,11 +77,7 @@ def coupling_show(coupling, img_side, path, name):
         plt.close()
 
         # top down
-        top_down = coupling[:-num_global, -num_global:].sum(1)
-        top_down = np.concatenate(list(map(lambda a: np.hstack(a),
-                                           np.split(top_down.reshape(num_global, int(img_side/s),
-                                                                     int(img_side/s)), s, axis=0))), axis=0)
-        im = plt.imshow(top_down)
+        im = plt.imshow(coupling[:-num_global, -num_global:].sum(1).reshape(img_side, img_side))
         plt.colorbar(im)
         plt.gca().grid(False)
         plt.axis('off')
@@ -90,11 +85,7 @@ def coupling_show(coupling, img_side, path, name):
         plt.close()
 
         # bottom up
-        bottom_up = coupling[-num_global:, :-num_global].sum(0)
-        bottom_up = np.concatenate(list(map(lambda a: np.hstack(a),
-                                            np.split(bottom_up.reshape(num_global, int(img_side / s),
-                                                                       int(img_side / s)), s, axis=0))), axis=0)
-        im = plt.imshow(bottom_up)
+        im = plt.imshow(coupling[-num_global:, :-num_global].sum(0).reshape(img_side, img_side))
         plt.colorbar(im)
         plt.gca().grid(False)
         plt.axis('off')
@@ -105,7 +96,7 @@ def coupling_show(coupling, img_side, path, name):
         plt.colorbar(im)
         plt.gca().grid(False)
         plt.axis('off')
-        plt.savefig(path + '/coupling' + name + '.png')
+        plt.savefig(path + '/coupling_' + name + '.png')
         plt.close()
     return True
 
@@ -137,7 +128,6 @@ def generate_connectivity(num_cn, img_side,
 
     # Generate local connectivity
     for i in tqdm(range(img_side ** 2)):
-        count = 0
         x_1 = int(i % img_side)
         y_1 = int(i // img_side)
         connectivity[i, :num_cn] += get_cn(num_cn, (x_1, y_1), img_side, sw)
