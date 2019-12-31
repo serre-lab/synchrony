@@ -44,5 +44,5 @@ for ind, name in enumerate(exps):
     gpu_name = gpu_avail[ind*args.num_gpu:(ind+1)*args.num_gpu]
     # print('export CUDA_VISIBLE_DEVICES={}'.format(",".join(gpu_name)))
     # print('python {} -n {}'.format(args.file, name))
-    subprocess.call('CUDA_VISIBLE_DEVICES={} python {} -n {}'.format(",".join(gpu_name), args.file, name),
+    subprocess.call('CUDA_VISIBLE_DEVICES={} python {} -n {}&'.format(",".join(gpu_name), args.file, name),
                     shell=True) # shell=True, security hazard
