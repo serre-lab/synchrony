@@ -1,17 +1,23 @@
 import numpy as np 
+import matplotlib.pyplot as plt
+import itertools
 
 class NetProp():
     
     def __init__(self,coupling_net):
         self.coupling_net = coupling_net
+    
+    #def make_graph(self):
+        #not going to use anymore?
         
 
-    def create_graph(self):
+    def plot_graph(self):
         CM = self.coupling_net
         N = len(CM)#number of nodes 
     
         x = np.linspace(0,np.pi*2)
         y = np.sin(x)
+        
         z = np.cos(x)
         nodes = np.linspace(0,np.pi*2,N+1)
         nodes = nodes[:-1]
@@ -53,7 +59,7 @@ class NetProp():
 
 
 
-    def path_length(self, threshold):
+    def path_length(self):
         CN = self.coupling_net
     
         #unweighted graphs: BFS
@@ -65,18 +71,39 @@ class NetProp():
         #2) apply algorithm 
         
         #3) alternatively - always use Bellman Ford
-        
 
-    def cluster_coefficient(self,threshold):
+        #find the shortest path length for each 
+        d_all= {}
+        p_all={}
+        for i in range(len(CN)):
+            d,p = bellman_ford(CN,i)
+            d_all[i] = d
+            p_all[i] = p
+            
+        #find the average
+        sum_d = 0
+        for d in d_all:
+            for i in d_all[d]:
+                if d != i:
+                    #print(d_all[d][i])
+                    sum_d+=d_all[d][i]
+        avg_shortest_PL = sum_d/(len(CM)*(len(CM)-1))
+        
+        
+        
+        self.d_all = d_all
+        self.p_all = p_all
+        self.AVGpl = avg_shortest_PL
+
+
+    #def cluster_coefficient(self,threshold):
         
     def inh_exc_ratio(self):
         inh = np.sum([i<0 for i in np.nditer(self.coupling_net)])
         exc = np.sum([i>0 for i in np.nditer(self.coupling_net)]) 
         #exc = self.coupling_net.size - inh #use this if no 0 couplings?
        
-    def inh_exc_calculation 
-
-
+    #def inh_exc_calculation(self):
 
 
 
@@ -85,42 +112,48 @@ class NetProp():
 
 #supporting definitions
 
-import pdb
 """
 The Bellman-Ford algorithm
-Graph API:
-    iter(graph) gives all nodes
-    iter(graph[u]) gives neighbours of u
-    graph[u][v] gives weight of edge (u, v)
+re-written to use the coupling matrix 
+
 """
 
-# Step 1: For each node prepare the destination and predecessor
-def initialize(graph, source):
-    d = {} # Stands for destination
-    p = {} # Stands for predecessor
-    for node in graph:
-        d[node] = float('Inf') # We start admiting that the rest of nodes are very very far
+
+
+
+def initialize(CM,source):
+    d = {}  #destination (ends up)
+    p = {} #stands for predecessor 
+
+    for node in range(len(CM)):
+        d[node] = float('Inf')
         p[node] = None
-    d[source] = 0 # For the source we know how to reach
-    return d, p
+    d[source] = 0 #this is where we are starting
 
-def relax(node, neighbour, graph, d, p):
-    # If the distance between the node and the neighbour is lower than the one I have now
-    if d[neighbour] > d[node] + graph[node][neighbour]:
+    return d,p
+
+def relax(node, neighbor, CM, d, p):
+
+# If the distance between the node and the neighbour is lower than the one I have now
+    if d[neighbor] > d[node] + CM[node,neighbor]:
         # Record this lower distance
-        d[neighbour]  = d[node] + graph[node][neighbour]
-        p[neighbour] = node
+        d[neighbor]  = d[node] + CM[node,neighbor]
+        p[neighbor] = node
 
-def bellman_ford(graph, source):
-    d, p = initialize(graph, source)
-    for i in range(len(graph)-1): #Run this until is converges
-        for u in graph:
-            for v in graph[u]: #For each neighbour of u
-                relax(u, v, graph, d, p) #Lets relax it
+
+def bellman_ford(CM,source):
+    d, p = initialize(CM, source)
+
+    for i in range(len(CM)-1): #Run this until is converges
+        for u in range(len(CM)): #all of the nodes 
+            for v in range(len(CM)): #all of the nodes, 
+                if u != v:  #now all of the neigbors only 
+                    relax(u, v, CM, d, p) #Lets relax it 
 
     # Step 3: check for negative-weight cycles
-    for u in graph:
-        for v in graph[u]:
-            assert d[v] <= d[u] + graph[u][v]
+    for u in range(len(CM)):
+        for v in range(len(CM)):
+            if u != v:
+                assert d[v] <= d[u] + CM[u,v]
+    return d,p
 
-    return d, p
