@@ -13,113 +13,109 @@ intrinsic frequencies: 0s
 coupling: 0s
 no printing & recording intermediate phases
 """
-device = 'cpu'
 
 
-class kura_np(object):
-    """
-    numpy
-    """
+class kura(object):
     def __init__(self,
-                 oscillator_num,
-                 updating_rate=0.1,
-                 mean_field=1,
-                 batch_size=1):
+                 batch_size,
+                 updating_rate,
+                 connectivity,
+                 gconnectivity,
+                 initial_phase,
+                 device):
 
+        self.device = device
         self.ep = updating_rate
-        self.K = mean_field
-        self.batch = batch_size
-        self.N = oscillator_num
-        self.phase = np.random.rand(batch_size, oscillator_num) * 2 * np.pi
-        self.in_frq = np.zeros_like(self.phase)
-        self.delta = np.zeros_like(self.phase)
-        self.coupling = np.zeros((oscillator_num, oscillator_num))
 
-    def phase_init(self, initial_phase=None):
         if initial_phase is not None:
-            self.phase = initial_phase
+            self.phase = initial_phase.to(self.device).repeat(batch_size, 1)
         else:
-            self.phase = np.random.rand(self.batch, self.N) * 2 * np.pi
-        initial_phase = copy.deepcopy(self.phase)
-        return initial_phase
-
-    def frequency_init(self, initial_frequency=None):
-        if initial_frequency is not None:
-            self.in_frq = initial_frequency
+            self.phase = None
+        if connectivity is not None:
+            self.connectivity = connectivity.to(self.device).repeat(batch_size, 1, 1)
         else:
-            self.in_frq = np.zeros((self.batch, self.N))
-
-    def set_coupling(self, coupling=None):
-        if coupling is not None:
-            self.coupling = coupling
+            self.connectivity = None
+        if gconnectivity is not None:
+            self.gconnectivity = gconnectivity.to(self.device).repeat(batch_size, 1, 1)
         else:
-            self.coupling = np.zeros((self.N, self.N))
+            self.gconnectivity = None
 
-    def set_ep(self, updating_rate=None):
-        if updating_rate is not None:
-            self.ep = updating_rate
+        self.delta = torch.zeros_like(self.phase).to(self.device)
+
+    def eps_anneal(self, i, steps, rate=0):
+        self.ep = self.ep - rate * float(i) * self.ep / steps
+        return True
+
+    def update(self, coupling):
+        n = torch.abs(torch.sign(coupling)).sum(2)
+        self.delta = self.ep * \
+                     (torch.bmm(coupling, torch.sin(self.phase).unsqueeze(2).float()).squeeze(2) * torch.cos(
+                         self.phase) -
+                      torch.bmm(coupling, torch.cos(self.phase).unsqueeze(2).float()).squeeze(2) * torch.sin(
+                                 self.phase)) / n
+        self.phase = self.phase + self.delta
+        return self.phase
+
+    def evol_1(self, coupling, steps=1, show=False, anneal=0, initial_state=True, record_step=1):
+        coupling = torch.zeros(coupling.shape[0],
+                               coupling.shape[1],
+                               coupling.shape[1]).to(self.device).scatter_(dim=2, index=self.connectivity, src=coupling)
+        if initial_state:
+            phases_list = [self.phase]
         else:
-            self.ep = 0.1
+            phases_list = []
 
-    def set_mean_field(self, mean_field=None):
-        if mean_field is not None:
-            self.K = mean_field
-        else:
-            self.K = 1
-
-    def _update(self):
-        diffs = np.expand_dims(self.phase, axis=1) - np.expand_dims(self.phase, axis=2)
-        # diffs
-        # 0, B-A, C-A
-        # A-B, 0, C-B
-        # A-C, B-C, 0
-        self.delta = self.ep * (self.in_frq + np.sum(self.coupling * np.sin(diffs), axis=2) / (self.N - 1))
-        self.phase = (self.phase + self.delta) % (2 * np.pi)
-        new_phase = self.phase
-        freq = self.delta
-        return new_phase, freq
-
-    def evolution(self, steps=1, record=False, show=False, anneal=0):
-        phases_list = [self.phase]
-        freqs_list = [self.delta]
         if show:
             for i in tqdm(range(steps)):
-                new, freq = self._update()
+                new = self.update(coupling)
                 self.eps_anneal(i, steps, anneal)
-                phases_list.append(new)
-                freqs_list.append(freq)
+                if i > (steps - 1 - record_step):
+                    phases_list.append(new)
         else:
             for i in range(steps):
-                new, freq = self._update()
+                new = self.update(coupling)
                 self.eps_anneal(i, steps, anneal)
-                phases_list.append(new)
-                freqs_list.append(freq)
+                if i > (steps - 1 - record_step):
+                    phases_list.append(new)
         try:
-            if record:
-                return phases_list, freqs_list
-            else:
-                # only return final phase
-                return new
+            return phases_list, coupling
         except RuntimeError:
             print('No updating')
 
-    def set_params(self,
-                   updating_rate=0.1,
-                   mean_field=1,
-                   coupling=None,
-                   initial_phase=None,
-                   initial_freq=None):
-        self.set_ep(updating_rate)
-        self.set_mean_field(mean_field)
-        self.phase_init(initial_phase)
-        self.frequency_init(initial_freq)
-        self.set_coupling(coupling)
+    def evol_2(self, local_coupling, global_coupling, steps=1,
+                   show=False, anneal=0, initial_state=True, record_step=1):
+        # make sure every operation is in_place
+        local_coupling = torch.zeros(local_coupling.shape[0],
+                                     local_coupling.shape[1],
+                                     self.phase.shape[1]).to(self.device).scatter_(dim=2, index=self.connectivity,
+                                                                                   src=local_coupling)
+        global_coupling = torch.zeros(global_coupling.shape[0],
+                                      global_coupling.shape[1],
+                                      self.phase.shape[1]).to(self.device).scatter_(dim=2, index=self.gconnectivity,
+                                                                                    src=global_coupling)
 
-    def eps_anneal(self,
-                   i,
-                   steps,
-                   rate=0):
-        self.ep = self.ep - rate * float(i) * self.ep / steps
+        coupling = torch.cat([local_coupling, global_coupling], dim=1)
+
+        if initial_state:
+            phases_list = [self.phase]
+        else:
+            phases_list = []
+        if show:
+            for i in tqdm(range(steps)):
+                new = self.update(coupling)
+                self.eps_anneal(i, steps, anneal)
+                if i > (steps - 1 - record_step):
+                    phases_list.append(new)
+        else:
+            for i in range(steps):
+                new = self.update(coupling)
+                self.eps_anneal(i, steps, anneal)
+                if i > (steps - 1 - record_step):
+                    phases_list.append(new)
+        try:
+            return phases_list, coupling
+        except RuntimeError:
+            print('No updating')
 
 
 class kura_torch2(object):
@@ -227,9 +223,7 @@ class kura_torch2(object):
                                       self.phase.shape[1]).to(self.device).scatter_(dim=2, index=global_inds,
                                                                                     src=global_coupling)
 
-        coupling = torch.zeros(self.phase.shape[0], self.phase.shape[1], self.phase.shape[1]).to(self.device)
-        coupling[:, :local_coupling.shape[1], :] += local_coupling
-        coupling[:, local_coupling.shape[1]:, :] += global_coupling
+        coupling = torch.cat([local_coupling, global_coupling], dim=1)
 
         if initial_state:
             phases_list = [self.phase]

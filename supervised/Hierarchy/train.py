@@ -43,7 +43,7 @@ p_rewire = float(experiment['p_rewire'])
 rp_field = experiment['rp_field']
 train_data_num = int(experiment['train_data_num'])
 train_batch_size = int(experiment['train_batch_size'])
-cv_batch_size = int(train_batch_size / 20)
+cv_batch_size = int(train_batch_size / 8)
 real_train_data_num = train_data_num - int(train_data_num % train_batch_size)
 train_epochs = int(experiment['train_epochs'])
 show_every = int(experiment['show_every'])
@@ -93,7 +93,7 @@ else:
     model = net.load_net(model_name, 1, out_channels, start_filts, depth, img_side,
                          num_cn, split, kernel_size, num_global_control).to(args.device)
     criterion = net.criterion(degree=degree).to(args.device)
-    regularizer = nn.DataParallel(net.regularizer()).to(args.device)
+    regularizer = net.regularizer().to(args.device)
     print("Assigned on {}".format(args.device))
 
 print('network contains {} parameters'.format(net.count_parameters(model))) # parameter number
@@ -200,7 +200,7 @@ for epoch in tqdm(range(train_epochs)):
 
             tavg_loss_cv = criterion(phase_list_cv, cv_mask, args.device, True).mean() / tavg_norm
             if num_global_control == 0:
-                tavg_loss += regular_weight * regularizer(coupling_cv, cv_mask, args.device).mean()
+                tavg_loss_cv += regular_weight * regularizer(coupling_cv, cv_mask, args.device).mean()
 
             # record and plot loss history
             loss_cv_history.append(tavg_loss_cv.cpu().data.numpy())
@@ -216,19 +216,28 @@ for epoch in tqdm(range(train_epochs)):
         # visualize training
         if (step == 0) & ((epoch == 0) | ((epoch + 1) % show_every == 0)):
             display(displayer, phase_list_train, batch, mask_train, coupling_train,
-                    img_side, group_size, save_path, 'train{}'.format(epoch), rp_field)
+                    img_side, group_size, save_path, 'train{}'.format(epoch))
 
     # visualize validation and save
     if (epoch == 0) | ((epoch + 1) % show_every == 0):
         # validation example, save its coupling matrix
         display(displayer, phase_list_cv, cv_image, cv_mask, coupling_cv,
-                img_side, group_size, save_path, 'valid{}'.format(epoch), rp_field)
+                img_side, group_size, save_path, 'valid{}'.format(epoch))
 
         # save files
-        tc.save({'epoch': epoch, 'train_loss:': loss_history, 'valid_loss': loss_cv_history,
-                 'model_state_dict': model.module.state_dict(),
-                 'optimizer_state_dict': op.state_dict(),
-                 'initial_phase': rand_phase,
-                 'connectivity': connectivity,
-                 'gconnectivity': global_connectivity},
-                save_path + '/model{}.pt'.format(epoch))
+        if gpu_num > 1:
+            tc.save({'epoch': epoch, 'train_loss:': loss_history, 'valid_loss': loss_cv_history,
+                     'model_state_dict': model.module.state_dict(),
+                     'optimizer_state_dict': op.state_dict(),
+                     'initial_phase': rand_phase,
+                     'connectivity': connectivity,
+                     'gconnectivity': global_connectivity},
+                    save_path + '/model{}.pt'.format(epoch))
+        else:
+            tc.save({'epoch': epoch, 'train_loss:': loss_history, 'valid_loss': loss_cv_history,
+                     'model_state_dict': model.state_dict(),
+                     'optimizer_state_dict': op.state_dict(),
+                     'initial_phase': rand_phase,
+                     'connectivity': connectivity,
+                     'gconnectivity': global_connectivity},
+                    save_path + '/model{}.pt'.format(epoch))
