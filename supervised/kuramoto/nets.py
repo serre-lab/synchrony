@@ -5,17 +5,21 @@ import losses as ls
 import ipdb
 
 class KuraNet(nn.Module):
-    def __init__(self, img_side, connectivity, batch_size=32, device='cpu', update_rate=.1, anneal=0, time_steps=10, record_steps=10, phase_initialization='random', walk_step=.1, intrinsic_frequencies='zero'):
+    def __init__(self, img_side, connectivity, num_global, batch_size=32, device='cpu', update_rate=.1, anneal=0, time_steps=10, record_steps=10, phase_initialization='random', walk_step=.1, intrinsic_frequencies='zero'):
         super(KuraNet, self).__init__()
 
         self.img_side = img_side
+        self.num_global = num_global
+        self.hierarchical = True if num_global > 0 else False
         self.connectivity = connectivity
         self.osci = km(img_side ** 2, update_rate=update_rate, batch_size=batch_size,
-                                  anneal=anneal, time_steps=time_steps, connectivity=connectivity,
-                                  record_steps=record_steps, phase_initialization=phase_initialization, walk_step=walk_step, device=device, intrinsic_frequencies=intrinsic_frequencies)
+                                  anneal=anneal, time_steps=time_steps,
+                                  connectivity=connectivity, num_global=num_global,
+                                  record_steps=record_steps, 
+                                  phase_initialization=phase_initialization,
+                                  walk_step=walk_step, device=device,
+                                  intrinsic_frequencies=intrinsic_frequencies)
         self.evolution = self.osci.evolution
-        #osci.set_ep(update_rate)
-        #osci.phase_init(initialization=initialization)
 
 class DownConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, pooling):
@@ -35,7 +39,6 @@ class DownConv(nn.Module):
         if self.pooling:
             x = self.pool(x)
         return x, before_pool
-
 
 class UpConv(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -60,12 +63,13 @@ class Unet(KuraNet):
         """
         Unet for semantic segmentation
         """
-        super(Unet, self).__init__(args.img_side, connectivity, batch_size=args.batch_size, update_rate = args.update_rate,
+        super(Unet, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate = args.update_rate,
                                    anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, 
                                    phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
         self.out_channels = args.out_channels
         self.num_cn = args.num_cn
+        self.num_global = num_global
         self.split = args.split
         self.down_convs = []
         self.up_convs = []
@@ -90,7 +94,12 @@ class Unet(KuraNet):
 
         self.down_convs = nn.ModuleList(self.down_convs)
         self.up_convs = nn.ModuleList(self.up_convs)
-        self.linear = nn.Linear(int((self.out_channels/self.split) * (self.img_side ** 2)), int(((self.img_side ** 2)/self.split) * args.num_cn))
+
+        if num_global == 0:
+            self.linear = nn.Linear(int((self.out_channels/self.split) * (self.img_side ** 2)), int(((self.img_side ** 2)/self.split) * args.num_cn))
+        else:
+            self.linear1 = nn.Linear(int((self.out_channels/self.split) * (self.img_side ** 2)), int(((self.img_side ** 2)/self.split) * (args.num_cn + 1)))
+            self.linear2 = nn.Linear((img_side **2), img_side ** 2 + num_global ** 2 - num_global)
 
         self.reset_params()
 
@@ -107,13 +116,22 @@ class Unet(KuraNet):
             x = module(before_pool, x)
 
         x = self.conv_final(x)
-
-        x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
+        if self.num_global == 0:
+            x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                           (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
+            x = x / x.norm(p=2, dim=2).unsqueeze(2)
+            phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical=self.hierarchical)
+            return phase_list, coupling, omega
 
-        x = x / x.norm(p=2, dim=2).unsqueeze(2)
-        phase_list, omega = self.evolution(x, batch=x_in)
-        return phase_list, x, omega
+        else:
+            x1 = self.linear1(x[:, :-1,...].reshape(-1, int(((self.out_channels - 1)/self.split) * (self.img_side ** 2)))).reshape(-1, self.img_side **2, self.num_cn + 1)
+            x2 = self.linear2(x[:, -1, ...].reshape(-1, self.img_side ** 2)).reshape(-1, self.num_global, int(self.img_side ** 2/ self.num_global) + self.num_global - 1)
+            x1 = x1 / x1.norm(p=2, dim=2).unsqueeze(2)
+            x2 = x2 / x2.norm(p=2, dim=2).unsqueeze(2)
+            x = [x1, x2]
+            phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical=self.hierarchical)
+            
+            return phase_list, coupling, omega
 
     @staticmethod
     def weights_init(m):
@@ -128,15 +146,16 @@ class Unet(KuraNet):
 
 class simple_conv(KuraNet):
 
-    def __init__(self, args, connectivity):
+    def __init__(self, args, connectivity, num_global):
         """
         For various image size, feature maps are all in the same shape as input
         """
-        super(simple_conv, self).__init__(args.img_side, connectivity, batch_size=args.batch_size, update_rate = args.update_rate,
+        super(simple_conv, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate = args.update_rate,
                                    anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, 
                                    phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
         self.num_cn = args.num_cn
+        self.num_global = num_global
         self.out_channels = args.out_channels
         self.split = args.split
         self.convs1 = []
@@ -156,9 +175,12 @@ class simple_conv(KuraNet):
         self.convs2 = nn.ModuleList(self.convs2)
 
         self.conv_final = nn.Conv2d(outs * 2, args.out_channels, kernel_size=1, stride=1, padding=0)
+        if num_global == 0:
+            self.linear = nn.Linear(int((self.out_channels/self.split) * (self.img_side ** 2)), int(((self.img_side ** 2)/self.split) * args.num_cn))
+        else:
+            self.linear1 = nn.Linear(int((self.out_channels/self.split) * (self.img_side ** 2)), int(((self.img_side ** 2)/self.split) * (args.num_cn + 1)))
+            self.linear2 = nn.Linear((img_side **2), img_side ** 2 + num_global ** 2 - num_global)
 
-        self.linear = nn.Linear(int((args.out_channels / args.split) * (args.img_side ** 2)),
-                                int(((args.img_side ** 2) / args.split) * args.num_cn))
         self.reset_params()
 
     def forward(self, x):
@@ -176,14 +198,22 @@ class simple_conv(KuraNet):
             x[:, c * 2 + 1, ...] = x2[:, c, ...]
 
         x = self.conv_final(x)
-
-        x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
+        if self.num_global == 0:
+            x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                           (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
+            x = x / x.norm(p=2, dim=2).unsqueeze(2)
+            phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical=self.hierarchical)
+            return phase_list, coupling, omega
 
-        x = x / x.norm(p=2, dim=2).unsqueeze(2)
-
-        phase_list, omega = self.evolution(x, batch=x_in)
-        return phase_list, x, omega
+        else:
+            x1 = self.linear1(x[:, :-1,...].reshape(-1, int(((self.out_channels - 1)/self.split) * (self.img_side ** 2)))).reshape(-1, self.img_side **2, self.num_cn + 1)
+            x2 = self.linear2(x[:, -1, ...].reshape(-1, self.img_side ** 2)).reshape(-1, self.num_global, int(self.img_side ** 2/ self.num_global) + self.num_global - 1)
+            x1 = x1 / x1.norm(p=2, dim=2).unsqueeze(2)
+            x2 = x2 / x2.norm(p=2, dim=2).unsqueeze(2)
+            x = [x1, x2]
+            phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical=self.hierarchical)
+            
+            return phase_list, coupling, omega
 
     @staticmethod
     def weights_init(m):
@@ -196,8 +226,9 @@ class simple_conv(KuraNet):
             self.weights_init(m)
 
 class autoencoder(nn.Module):    
-    def __init__(self):
+    def __init__(self, img_side, num_global_control=0):
         super(autoencoder,self).__init__()
+        self.num_global_control = num_global_control
         self.encoder = nn.Sequential(
             nn.Conv2d(1,16, kernel_size=5),
             nn.ReLU(True),
@@ -209,11 +240,18 @@ class autoencoder(nn.Module):
             nn.ReLU(True),
             nn.ConvTranspose2d(16,1,kernel_size=5),
             nn.ReLU(True))
+        if num_global_control > 0:
+            self.h_channel = nn.Linear(img_side - 4, num_global_control)
 
     def forward(self,x):
         x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+        if self.num_global_control > 0:
+            y = self.h_channel(x)
+            x = self.decoder(x)
+            return x, y
+        else:
+            x = self.decoder(x)
+            return x
 
 class criterion(nn.Module):
     def __init__(self, degree):
@@ -243,10 +281,10 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def load_net(args, connectivity):
+def load_net(args, connectivity, num_global):
     name = args.model_name
-    if name == 'simple_conv': return simple_conv(args, connectivity)
+    if name == 'simple_conv': return simple_conv(args, connectivity, num_global)
 
-    elif name == 'Unet': return Unet(args, connectivity)
+    elif name == 'Unet': return Unet(args, connectivity, num_global)
 
     else: raise ValueError('Network not included so far')

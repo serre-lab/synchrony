@@ -35,11 +35,13 @@ parser.add_argument('--out_channels', type=int, default=32)
 parser.add_argument('--split', type=int, default=4)
 parser.add_argument('--kernel_size', type=str, default=5)
 parser.add_argument('--num_cn', type=int, default=8)
-parser.add_argument('--critical_dist', type=int, default=2)
+parser.add_argument('--num_global_control', type=int, default=0)
+parser.add_argument('--p_rewire', type=float, default=0.0)
+parser.add_argument('--rp_field', type=str, default='arange')
 parser.add_argument('--phase_initialization', type=str, default='random')
 parser.add_argument('--intrinsic_frequencies', type=str, default='zero')
 parser.add_argument('--update_rate', type=float, default=1.6)
-parser.add_argument('--small_world', type=bool, default=False)
+parser.add_argument('--sw', type=bool, default=False)
 parser.add_argument('--time_steps', type=int, default=8)
 parser.add_argument('--record_steps', type=int, default=8)
 parser.add_argument('--walk_step', type=float, default=.1)
@@ -104,21 +106,32 @@ testing_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=Tr
 
 ######################
 # connectivity
-print('Generating fixed adjancency matrix.')
-if args.small_world:
-    connectivity = generate_connectivity(args.img_side, args.num_cn, args.critical_dist, 'small_world')
-else:
-    connectivity = generate_connectivity(args.img_side, args.num_cn, args.critical_dist, 'local')
+#print('Generating fixed adjancency matrix.')
+#if args.small_world:
+#    connectivity = generate_connectivity(args.img_side, args.num_cn, args.critical_dist, 'small_world')
+#else:
+#    connectivity = generate_connectivity(args.img_side, args.num_cn, args.critical_dist, 'local')
+#connectivity = torch.tensor(connectivity).long().unsqueeze(0).to('cpu')
+#batch_connectivity = connectivity.repeat(args.batch_size, 1, 1).to(args.device)
+
+connectivity, global_connectivity = \
+    generate_connectivity(args.num_cn, args.img_side, sw=args.sw, 
+                          num_global_control=args.num_global_control,
+                          p_rewire=args.p_rewire, rp_field=args.rp_field)
+
 connectivity = torch.tensor(connectivity).long().unsqueeze(0).to('cpu')
 batch_connectivity = connectivity.repeat(args.batch_size, 1, 1).to(args.device)
 
+if global_connectivity is not None:
+    global_connectivity = torch.tensor(global_connectivity).long().unsqueeze(0).to('cpu')
+    batch_connectivity = [connectivity] + [global_connectivity.repeat(args.batch_size, 1, 1).to(args.device)]
 ######################
 # initialization
 if torch.cuda.device_count() > 1:
-    model = nn.DataParallel(nets.load_net(args, batch_connectivity)).to(args.device)
+    model = nn.DataParallel(nets.load_net(args, batch_connectivity, args.num_global_control)).to(args.device)
     criterion = nn.DataParallel(nets.criterion(args.time_weight)).to(args.device)
 else:
-    model = nets.load_net(args, batch_connectivity).to(args.device)
+    model = nets.load_net(args, batch_connectivity, args.num_global_control).to(args.device)
     criterion = nets.criterion(args.time_weight).to(args.device)
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
 time.sleep(2)
@@ -153,22 +166,24 @@ for epoch in range(args.train_epochs):
         tavg_loss = tavg_loss.mean() / norm
         tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
         l+=tavg_loss.data.cpu().numpy()
-
+        ipdb.set_trace()
         tavg_loss.backward()
         op.step()
        
         # visualize training
         if step % args.show_every == 0:
-            train_ind = np.random.randint(args.batch_size)
-            train_image = batch[train_ind].cpu().data.numpy()
-            train_mask = mask[train_ind].cpu().unsqueeze(0).data.numpy()
-            coupling_train_show = \
-                torch.zeros(1, args.img_side ** 2, args.img_side ** 2).to('cpu').scatter_(dim=2, index=connectivity.cpu(),
-                                                    src=coupling_train[train_ind].unsqueeze(0).cpu()).data.numpy()[0]
-            train_phase_list = np.array([phase.cpu().data.numpy()[train_ind, :] for phase in phase_list_train])
-            omega_train_show = omega_train[train_ind,...].reshape(args.img_side, args.img_side).detach().cpu().numpy()
-            show(displayer, train_phase_list, train_image, train_mask, coupling_train_show, omega_train_show, save_dir,
-                'train{}_{}'.format(epoch,step), args.segments, args.img_side)
+            #train_ind = np.random.randint(args.batch_size)
+            #train_image = batch[train_ind].cpu().data.numpy()
+            #train_mask = mask[train_ind].cpu().unsqueeze(0).data.numpy()
+            #coupling_train_show = \
+            #    torch.zeros(1, args.img_side ** 2, args.img_side ** 2).to('cpu').scatter_(dim=2, index=connectivity.cpu(),
+            #                                        src=coupling_train[train_ind].unsqueeze(0).cpu()).data.numpy()[0]
+            #train_phase_list = np.array([phase.cpu().data.numpy()[train_ind, :] for phase in phase_list_train])
+            #omega_train_show = omega_train[train_ind,...].reshape(args.img_side, args.img_side).detach().cpu().numpy()
+
+            ipdb.set_trace()
+            display(displayer, phase_list_train, batch, mask, coupling_train, omega_train, args.img_side, args.segments, save_dir,
+                'train{}_{}'.format(epoch,step), args.rp_field)
     loss_history.append(l / step)
     l=0
     for step, (test_data, _) in tqdm(enumerate(testing_loader)):
