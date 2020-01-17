@@ -1,8 +1,11 @@
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+plt.ioff()
 import os
 import torch as tc
 import numpy as np
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from itertools import permutations
 
 
@@ -118,7 +121,7 @@ def kura_param_show(coupling, omega, img_side, path, name):
     layer_name = ('layer_1', 'layer_2')
     for o, omegas in enumerate([layer1_omega, layer2_omega]):
         im = plt.imshow(layer1_omega)
-        plt.title('{} Intrinsic Frequencies'.format(names[o]))
+        plt.title('{} Intrinsic Frequencies'.format(layer_name[o]))
         plt. gca().grid(False)
         plt.axis('off')
         plt.colorbar(im)

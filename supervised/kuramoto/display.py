@@ -1,3 +1,7 @@
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+plt.ioff()
 import matplotlib.animation as animation
 import matplotlib.colors as colors
 import matplotlib.cm as cm
@@ -425,4 +429,34 @@ class displayer(object):
         plt.title('input')
         plt.axis('off')
         plt.savefig(save_name + 'e' + str(epoch) + '.png')
+        plt.close()
+
+
+    def static_evol2(self, nrows, ncols, input, save_name, mask):
+        # This is for phases which have less than 5 steps
+        fig, axes = plt.subplots(1, self.phases.shape[0] + 2)
+        axes.reshape(-1)
+        axes[0].imshow(np.reshape(input, (nrows, ncols)), cmap='gray')
+        axes[0].axis('off')
+        axes[0].title.set_text('input')
+        for i in range(self.phases.shape[0]):
+            axes[i + 1].imshow(np.reshape(self.phases[i], (nrows, ncols)), cmap='hsv')
+            axes[i + 1].axis('off')
+            axes[i + 1].title.set_text('step' + str(int(i)))
+        axes[-1].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
+        axes[-1].axis('off')
+        axes[-1].title.set_text('mask')
+        cbar_ax = fig.add_axes([0.95, 0.31, 0.01, 0.38])
+        #plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
+        #                               cmap='hsv'), cax=cbar_ax)
+        ax2 = fig.add_axes([0.07, 0.15, 0.88, 0.1])
+        xmin, xmax = ax2.get_xlim()
+        ax2.arrow(xmin, 0, xmax - xmin, 0., fc='k', ec='k',
+                  head_width=0.1, head_length=0.01,
+                  length_includes_head=True, clip_on=False)
+        ax2.text(0.46, 0.2, 'iterations', fontsize=12)
+        ax2.set_yticks([])
+        ax2.axis('off')
+        plt.tight_layout(pad=3.5, w_pad=0.5, h_pad=0.6)
+        plt.savefig(save_name + '.png')
         plt.close()

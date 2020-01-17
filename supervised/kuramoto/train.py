@@ -124,7 +124,8 @@ batch_connectivity = connectivity.repeat(args.batch_size, 1, 1).to(args.device)
 
 if global_connectivity is not None:
     global_connectivity = torch.tensor(global_connectivity).long().unsqueeze(0).to('cpu')
-    batch_connectivity = [connectivity] + [global_connectivity.repeat(args.batch_size, 1, 1).to(args.device)]
+    batch_gconnectivity = global_connectivity.repeat(args.batch_size, 1, 1).to(args.device)
+    batch_connectivity = [batch_connectivity] + [batch_gconnectivity]
 ######################
 # initialization
 if torch.cuda.device_count() > 1:
@@ -166,7 +167,6 @@ for epoch in range(args.train_epochs):
         tavg_loss = tavg_loss.mean() / norm
         tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
         l+=tavg_loss.data.cpu().numpy()
-        ipdb.set_trace()
         tavg_loss.backward()
         op.step()
        
@@ -181,7 +181,6 @@ for epoch in range(args.train_epochs):
             #train_phase_list = np.array([phase.cpu().data.numpy()[train_ind, :] for phase in phase_list_train])
             #omega_train_show = omega_train[train_ind,...].reshape(args.img_side, args.img_side).detach().cpu().numpy()
 
-            ipdb.set_trace()
             display(displayer, phase_list_train, batch, mask, coupling_train, omega_train, args.img_side, args.segments, save_dir,
                 'train{}_{}'.format(epoch,step), args.rp_field)
     loss_history.append(l / step)

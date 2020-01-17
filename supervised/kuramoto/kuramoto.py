@@ -81,7 +81,7 @@ class Kuramoto(object):
         elif initialization == 'zero':
             self.omega = lambda x : torch.zeros((self.batch_size,self.N + self.gN)).to(self.device)
         elif initialization == 'learned':
-            self.freq_net = nets.autoencoder().to(self.device)
+            self.freq_net = nets.autoencoder(self.img_side, num_global_control=self.num_global).to(self.device)
             self.omega = lambda x : self.freq_net.forward(x).reshape(self.batch_size, -1)
         return True
 
@@ -105,9 +105,6 @@ class Kuramoto(object):
     def _update3(self, coupling, omega):
         # efficient, much less memory usage
         n = coupling.shape[2]
-        coupling = torch.zeros(coupling.shape[0],
-                               coupling.shape[1],
-                               coupling.shape[1]).to(self.device).scatter_(dim=2, index=self.connectivity, src=coupling)
         self.delta = self.eps * \
                      (torch.bmm(coupling, torch.sin(self.phase).unsqueeze(2).float()).squeeze(2) * torch.cos(self.phase) -
                      torch.bmm(coupling, torch.cos(self.phase).unsqueeze(2).float()).squeeze(2) * torch.sin(self.phase)) / n
@@ -125,21 +122,15 @@ class Kuramoto(object):
             local_coupling=torch.zeros(coupling[0].shape[0],
                                        coupling[0].shape[1],
                                        self.phase.shape[1]).to(self.device).scatter_(dim=2,
-                                        index=inds[0],src=coupling[0])
+                                       index=self.connectivity[0],src=coupling[0])
             global_coupling=torch.zeros(coupling[1].shape[0],
                                        coupling[1].shape[1],
                                        self.phase.shape[1]).to(self.device).scatter_(dim=2,
-                                       index=inds[1],src=coupling[0])
+                                       index=self.connectivity[1],src=coupling[1])
 
             coupling = torch.zeros(self.phase.shape[0], self.phase.shape[1], self.phase.shape[1]).to(self.device)
             coupling[:, :local_coupling.shape[1], :] += local_coupling
             coupling[:, local_coupling.shape[1]:, :] += global_coupling
-
-            local_omega = omega[0]
-            global_omega = omega[1]
-            omega = torch.zeros(self.batch_size, self.N + self.gN)
-            omega[:,:self.N] = local_omega
-            omega[:,self.N:] = global_omega
 
         else:
             coupling = torch.zeros(coupling.shape[0], coupling.shape[1],
