@@ -71,64 +71,52 @@ class UpConv(nn.Module):
         return x
 
 
-class Unet(nn.Module):
-    def __init__(self, in_channels, out_channels, start_filts, depth, img_side, connections, split, kernel_size, num_global):
+class Unet(KuraNet):
+    def __init__(self, args, connectivity, num_global):
         """
         Unet for semantic segmentation
         """
-        super(Unet, self).__init__()
-        self.connections = connections
-        self.img_side = img_side
-        self.out_channels = out_channels
-        self.split = split
+        super(Unet, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+
+        self.connections = args.num_cn
+        self.img_side = args.img_side
+        self.out_channels = args.out_channels
+        self.split = args.split
         self.num_global = num_global
         self.down_convs = []
         self.up_convs = []
 
         # create a encoder pathway
-        for i in range(depth):
-            ins = in_channels if i == 0 else outs
-            outs = start_filts * (2 ** i)
-            pooling = True if i < depth - 1 else False
+        for i in range(args.depth):
+            ins = args.in_channels if i == 0 else outs
+            outs = args.start_filts * (2 ** i)
+            pooling = True if i < args.depth - 1 else False
 
-            down_conv = DownConv(ins, outs, kernel_size[0], pooling)
+            down_conv = DownConv(ins, outs, args.kernel_size[0], pooling)
             self.down_convs.append(down_conv)
 
         # create a decoder pathway
-        for i in range(depth - 1):
+        for i in range(args.depth - 1):
             ins = outs
             outs = ins // 2
-            up_conv = UpConv(ins, outs, kernel_size[1])
+            up_conv = UpConv(ins, outs, args.kernel_size[1])
             self.up_convs.append(up_conv)
 
         self.down_convs = nn.ModuleList(self.down_convs)
         self.up_convs = nn.ModuleList(self.up_convs)
 
-        self.conv_final = nn.Conv2d(outs, out_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_final = nn.Conv2d(outs, args.out_channels, kernel_size=1, stride=1, padding=0)
         if num_global == 0:
-            self.linear = nn.Linear(int((out_channels/split) * (img_side ** 2)),
-                                    int(((img_side ** 2)/split) * connections))
+            self.linear = nn.Linear(int((args.out_channels/args.split) * (args.img_side ** 2)),
+                                    int(((args.img_side ** 2)/args.split) * args.num_cn))
         else:
-            self.linear1 = nn.Linear(int(((out_channels - 1)/split) * (img_side ** 2)),
-                                     int(((img_side ** 2)/split) * (connections + 1)))
-            self.linear2 = nn.Linear((img_side ** 2), img_side ** 2 + num_global ** 2 - num_global)
+            self.linear1 = nn.Linear(int(((args.out_channels - 1)/args.split) * (args.img_side ** 2)),
+                                     int(((args.img_side ** 2)/args.split) * (args.num_cn + 1)))
+            self.linear2 = nn.Linear((args.img_side ** 2), args.img_side ** 2 + num_global ** 2 - num_global)
         self.reset_params()
 
-    def forward(self, x,
-                kura_update_rate,
-                anneal,
-                episodes,
-                initial_phase,
-                connectivity,
-                record_step,
-                test,
-                device,
-                global_connectivity=None):
-        x = x
-        osci = km.kura_torch2(self.img_side ** 2 + self.num_global, device=device)
-        osci.set_ep(kura_update_rate)
-        osci.phase_init(initial_phase)
-
+    def forward(self, x):
+        x_in = x
         encoder_outs = []
 
         for i, module in enumerate(self.down_convs):
@@ -140,13 +128,13 @@ class Unet(nn.Module):
             x = module(before_pool, x)
 
         x = self.conv_final(x)
+        ipdb.set_trace()
         if self.num_global == 0:
             x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.connections)
             x = x / x.norm(p=2, dim=2).unsqueeze(2)
-            phase_list, coupling = osci.evolution3(x, connectivity, anneal=anneal,
-                                                   steps=episodes, initial_state=test, record_step=record_step)
-            return phase_list, coupling
+            phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical=False)               
+            return phase_list, coupling, omega
         else:
             x1 = self.linear1(x[:, :-1,
                               ...].reshape(-1, int(((self.out_channels - 1)/self.split) *
@@ -158,10 +146,9 @@ class Unet(nn.Module):
                                                                             self.num_global - 1)
             x1 = x1 / x1.norm(p=2, dim=2).unsqueeze(2)
             x2 = x2 / x2.norm(p=2, dim=2).unsqueeze(2)
-            phase_list, coupling = osci.evolution4(x1, x2, connectivity, global_connectivity, anneal=anneal,
-                                                   steps=episodes, initial_state=test, record_step=record_step)
+            phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical = True)
             phase_list = [phase[:, :-self.num_global] for phase in phase_list]
-            return phase_list, coupling
+            return phase_list, coupling, omega
 
     @staticmethod
     def weights_init(m):
