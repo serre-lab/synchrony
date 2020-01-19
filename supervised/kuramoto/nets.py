@@ -207,6 +207,7 @@ class simple_conv(KuraNet):
         self.reset_params()
 
     def forward(self, x):
+        x_in = x
         x1 = x
         x2 = x
         for i, module in enumerate(self.convs1):
@@ -240,6 +241,7 @@ class simple_conv(KuraNet):
                                                                             self.num_global - 1)
             x1 = x1 / x1.norm(p=2, dim=2).unsqueeze(2)
             x2 = x2 / x2.norm(p=2, dim=2).unsqueeze(2)
+            x=[x1,x2]
             phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical=True)
             phase_list = [phase[:, :-self.num_global] for phase in phase_list]
             return phase_list, coupling, omega
@@ -412,15 +414,15 @@ class autoencoder(nn.Module):
             nn.ConvTranspose2d(16,1,kernel_size=5),
             nn.ReLU(True))
         if num_global_control > 0:
-            self.h_channel = nn.Linear(img_side - 4, num_global_control)
+            self.h_channel = nn.Linear(8*(img_side - 8)**2, num_global_control)
 
     def forward(self,x):
         x = self.encoder(x)
         if self.num_global_control > 0:
-            y = self.h_channel(x)
+            y = self.h_channel(x.reshape(x.shape[0], -1))
             x = self.decoder(x)
-            return torch.concat((x,y),dim=2)
+            return torch.cat((x.reshape(x.shape[0],-1),y),dim=1)
         else:
             x = self.decoder(x)
-            return x
+            return x.reshape(x.shape[0], -1)
 

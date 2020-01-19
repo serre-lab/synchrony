@@ -29,16 +29,19 @@ By "simple experiment", we mean one in which a single model is trained for one s
 * intrinsic_frequencies- Distribution from which to draw intrinsic frequencies. Choices are 'zero' for zero intrinsic frequencies and `gaussian` for normal about 0
 * update_rate- Update step for Kuramoto dynamics
 * learning_rate- Learning rate for coupling net
+* transform- String, either 'exp' or 'linear' controlling whether loss is of exponential or linear form
 * sparsity_weight- L1 sparsity penalty on coupling matrix
-* small_world- Makes couplings a small world graph
+* sw- Makes couplings a small world graph
 * num_cn- Number of connected neighbors in the lattice from which the small world graph is generated.
-* critical_distance - Neighborhood for local coupling
+* num_global_control- Number of layer-two units
+* p_rewire- Probability of rewiring a lateral receptive field if sw=True (VERIFY)
+* RF_field- Whether vertical receptive fields are local or randomly shuffled
 * in_channels- Number of coupling net input channels
 * start_filts- Number of first layer features (?)
 * out_channels- Number of output features(?)
-* split- Number of sections into which to divide the conv output to repeatedly apply the fully connected layers. Increasing this integer over 1 should save memory.
+* split- Number of sections into which to divide the conv output to repeatedly apply the fully connected layers. Increasing this integer over 1 should save memory. Ensure that output_channels is divisible by split.
 * depth- Number of layers in the net
-* kernel_size- Size of the kernels in a layer. Possibly a tuple for multi-scale models, but this has not been implemented.
+* kernel_size- Size of the kernels in a layer. Possibly a comma-separated list for multi-scale models, but this has not been implemented.
 
 ## Running a search experiment
 By "search experiment", we mean one in which several models sent to difference devices are trained as one hyperparameter, called the `search_parameter`, is varied. The section header for such an experiment in the config file must end in '_search'. You must also specify a `sub_experiment`, which should be the section header for a simple experiment, and a `search_parameter`, which should be the name of one of the parameters listed above. The values this parameter will assume during the search should be provided under the key `search_values` in the form of a list as should the device indices corresponding to the machine you'd like each sub-experiment to run on.  

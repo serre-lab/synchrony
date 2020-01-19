@@ -37,7 +37,7 @@ def read_data(data_inds, path, img_side, group_size, device='cuda', valid=False)
         return tc.tensor(images).float().detach().to(device), tc.tensor(masks).float().detach().to(device)
 
 
-def display(displayer, phase_list, images, masks, coupling, omega, img_side, group_size, path, name, rp_field):
+def display(displayer, phase_list, images, masks, coupling, omega, img_side, group_size, path, name, rf_type):
     # randomly select images to display
     ind = np.random.randint(images.shape[0])
     image = images[ind].cpu().data.numpy()
@@ -49,7 +49,7 @@ def display(displayer, phase_list, images, masks, coupling, omega, img_side, gro
     colored_mask = (np.expand_dims(np.expand_dims(np.arange(group_size), axis=0), axis=-1) * mask / group_size).sum(1)
     displayer.set_phases(np_phase_list)
     displayer.set_masks(mask)
-    if rp_field == 'arange':
+    if rf_type == 'arange':
         kura_param_show(coupling, omega, img_side, path, name)
 
     if len(phase_list) > 4:
@@ -133,7 +133,7 @@ def kura_param_show(coupling, omega, img_side, path, name):
 
 def generate_connectivity(num_cn, img_side,
                           sw=False, num_global_control=0,
-                          p_rewire=0.5, rp_field='arange'):
+                          p_rewire=0.5, rf_type='arange'):
     # Generate local coupling
     if num_global_control > 0:
         s = np.sqrt(num_global_control)
@@ -146,9 +146,9 @@ def generate_connectivity(num_cn, img_side,
 
         connectivity = np.zeros((img_side ** 2, num_cn + 1))
         seq = np.arange(img_side ** 2)
-        if rp_field == 'random':
+        if rf_type == 'random':
             np.random.shuffle(seq)
-        elif rp_field == 'arange':
+        elif rf_type == 'arange':
             seq = np.concatenate(np.split(np.stack(np.split(seq.reshape(img_side, img_side), s, axis=1),
                                                    axis=0), s, axis=1), axis=0).reshape(-1)
         else:

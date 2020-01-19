@@ -81,7 +81,7 @@ class Kuramoto(object):
         elif initialization == 'zero':
             self.omega = lambda x : torch.zeros((self.batch_size,self.N + self.gN)).to(self.device)
         elif initialization == 'learned':
-            self.freq_net = nets.autoencoder(self.img_side, num_global_control=self.num_global).to(self.device)
+            self.freq_net = nets.autoencoder(int(np.sqrt(self.N)), num_global_control=self.gN).to(self.device)
             self.omega = lambda x : self.freq_net.forward(x).reshape(self.batch_size, -1)
         return True
 
@@ -117,7 +117,6 @@ class Kuramoto(object):
         self.eps = self.update_rate
         omega = self.omega(batch)
         phase_list = [self.phase]
-
         if hierarchical:
             local_coupling=torch.zeros(coupling[0].shape[0],
                                        coupling[0].shape[1],
