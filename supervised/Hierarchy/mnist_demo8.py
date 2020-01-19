@@ -8,6 +8,7 @@ import configparser
 from utils import *
 matplotlib.use('Agg')
 plt.style.use('seaborn-darkgrid')
+import ipdb
 
 """
 Clean redundancy
@@ -163,6 +164,7 @@ for epoch in tqdm(range(train_epochs)):
         training_order = training_order[:real_train_data_num].reshape(-1, train_batch_size)
 
     for step in range(training_order.shape[0]):
+        print('Step: {}'.format(step))
         # just add a small perturbation
         rand_phase += perturb * tc.rand(1, img_side ** 2 + num_global_control) * 2 * np.pi
         rand_phase = rand_phase % (2 * np.pi)

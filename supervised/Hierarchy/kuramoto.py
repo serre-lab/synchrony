@@ -2,6 +2,7 @@ import numpy as np
 import copy
 from tqdm import tqdm
 import torch
+import ipdb
 
 """
 DEFAULTS
@@ -219,6 +220,7 @@ class kura_torch2(object):
     def evolution4(self, local_coupling, global_coupling, inds, global_inds, steps=1,
                    show=False, anneal=0, initial_state=True, record_step=1):
         # make sure every operation is in_place
+        ipdb.set_trace()
         local_coupling = torch.zeros(local_coupling.shape[0],
                                      local_coupling.shape[1],
                                      self.phase.shape[1]).to(self.device).scatter_(dim=2, index=inds, src=local_coupling)

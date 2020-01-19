@@ -5,7 +5,7 @@ import kuramoto as km
 import loss_func_ex as lx
 import matplotlib.pyplot as plt
 import matplotlib.lines as lines
-
+import ipdb
 
 def load_net(name, in_channels, out_channels, start_filts,
              depth, img_side, connections, split, kernel_size, num_global):
@@ -135,6 +135,7 @@ class Unet(nn.Module):
                                                    steps=episodes, initial_state=test, record_step=record_step)
             return phase_list, coupling
         else:
+            ipdb.set_trace()
             x1 = self.linear1(x[:, :-1,
                               ...].reshape(-1, int(((self.out_channels - 1)/self.split) *
                                            (self.img_side ** 2)))).reshape(-1, self.img_side ** 2,
@@ -145,6 +146,7 @@ class Unet(nn.Module):
                                                                             self.num_global - 1)
             x1 = x1 / x1.norm(p=2, dim=2).unsqueeze(2)
             x2 = x2 / x2.norm(p=2, dim=2).unsqueeze(2)
+            ipdb.set_trace()
             phase_list, coupling = osci.evolution4(x1, x2, connectivity, global_connectivity, anneal=anneal,
                                                    steps=episodes, initial_state=test, record_step=record_step)
             phase_list = [phase[:, :-self.num_global] for phase in phase_list]
