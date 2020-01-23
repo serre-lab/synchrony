@@ -117,8 +117,9 @@ connectivity, global_connectivity = \
                           num_global_control=args.num_global_control,
                           p_rewire=args.p_rewire, rf_type=args.rf_type)
 
+connectivity = tc.tensor(connectivity).long().to(args.device)
 if global_connectivity is not None:
-    global_connectivity = torch.tensor(global_connectivity).long().to('cpu')
+    global_connectivity = torch.tensor(global_connectivity).long().to(args.device)
 
 ######################
 # initialization
