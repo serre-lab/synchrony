@@ -10,7 +10,7 @@ import numpy as np
 import sys
 import losses
 import copy
-import ipdb
+#import ipdb
 
 class displayer(object):
     """

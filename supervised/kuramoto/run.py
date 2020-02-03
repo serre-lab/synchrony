@@ -1,5 +1,5 @@
 import argparse
-from ConfigParser import ConfigParser 
+from configparser import ConfigParser 
 import os
 import torch
 import subprocess

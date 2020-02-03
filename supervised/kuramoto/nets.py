@@ -82,7 +82,7 @@ class Unet(KuraNet):
         """
         super(Unet, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
-        self.connections = args.num_cn
+        self.num_cn = args.num_cn
         self.img_side = args.img_side
         self.out_channels = args.out_channels
         if num_global > 0: self.out_channels += 1
@@ -115,7 +115,7 @@ class Unet(KuraNet):
             self.linear = nn.Linear(int((self.out_channels/args.split) * (args.img_side ** 2)),
                                     int(((args.img_side ** 2)/args.split) * args.num_cn))
         else:
-            self.linear1 = nn.Linear(int(((self.out_channels)/args.split) * (args.img_side ** 2)),
+            self.linear1 = nn.Linear(int(((self.out_channels - 1)/args.split) * (args.img_side ** 2)),
                                      int(((args.img_side ** 2)/args.split) * (args.num_cn + 1)))
             self.linear2 = nn.Linear((args.img_side ** 2), args.img_side ** 2 + num_global ** 2 - num_global)
         self.reset_params()
@@ -135,7 +135,7 @@ class Unet(KuraNet):
         x = self.conv_final(x)
         if self.num_global == 0:
             x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
-                                              (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.connections)
+                                              (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
             x = x / x.norm(p=2, dim=2).unsqueeze(2)
             phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical=False)               
             return phase_list, coupling, omega
@@ -143,7 +143,7 @@ class Unet(KuraNet):
             x1 = self.linear1(x[:, :-1,
                               ...].reshape(-1, int(((self.out_channels -1)/self.split) *
                                            (self.img_side ** 2)))).reshape(-1, self.img_side ** 2,
-                                                                           self.connections + 1)
+                                                                           self.num_cn + 1)
             x2 = self.linear2(x[:, -1,
                               ...].reshape(-1, self.img_side ** 2)).reshape(-1, self.num_global,
                                                                             int(self.img_side ** 2/self.num_global) +
@@ -203,6 +203,7 @@ class simple_conv(KuraNet):
         else:
             self.linear1 = nn.Linear(int(((self.out_channels - 1)/self.split) * (self.img_side ** 2)),
                                      int(((self.img_side ** 2)/self.split) * (self.num_cn + 1)))
+
             self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global)
         self.reset_params()
 

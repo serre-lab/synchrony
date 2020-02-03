@@ -187,18 +187,10 @@ for epoch in range(args.train_epochs):
         if step % args.show_every == 0:
             # visualize validation and save
             # validation example, save its coupling matrix
-            test_ind = np.random.randint(args.batch_size)
-            test_image = batch[test_ind].cpu().data.numpy()
-            test_mask = mask[test_ind].cpu().unsqueeze(0).data.numpy()
-            coupling_test_show = \
-                torch.zeros(1, args.img_side ** 2, args.img_side ** 2).to('cpu').scatter_(dim=2, index=connectivity.cpu(),
-                                                                     src=coupling_test[test_ind].cpu().unsqueeze(
-                                                                         0)).data.numpy()[0]
-            omega_test_show = omega_test[test_ind,...].reshape(args.img_side, args.img_side).detach().cpu().numpy()
-            test_phase_list = np.array([phase.cpu().data.numpy()[test_ind, :] for phase in phase_list_test])
-            show(displayer, test_phase_list, test_image, test_mask, coupling_test_show, omega_test_show, save_dir, 'test{}_{}'.format(epoch,step), args.segments, args.img_side)
-	if step*args.batch_size > num_test:
-	    break
+            display(displayer, phase_list_test, batch, mask, coupling_test, omega_test, args.img_side, args.segments, save_dir, 
+            'test{}_{}'.format(epoch, step), args.rf_type)
+        if step*args.batch_size > num_test:
+            break
     loss_history_test.append(l /step)
 
 
