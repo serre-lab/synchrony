@@ -1,4 +1,6 @@
 import os, subprocess
+import nest_asyncio
+nest_asyncio.apply()
 import nets
 import time
 import argparse
@@ -71,7 +73,6 @@ else:
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     plt.ioff()
-    
 ######################
 # device
 if not args.device is not 'cpu':
@@ -108,26 +109,32 @@ testing_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=Tr
 
 #####################
 # Connectivity
-connectivity, global_connectivity = \
+local_connectivity, global_connectivity = \
     generate_connectivity(args.num_cn, args.img_side, sw=args.sw, 
                           num_global_control=args.num_global_control,
                           p_rewire=args.p_rewire, rf_type=args.rf_type)
 
-connectivity = torch.tensor(connectivity).long().unsqueeze(0).to('cpu')
-batch_connectivity = connectivity.repeat(args.batch_size, 1, 1).to(args.device)
+local_connectivity = torch.tensor(local_connectivity).long().to(args.device)
 
 if global_connectivity is not None:
-    global_connectivity = torch.tensor(global_connectivity).long().unsqueeze(0).to('cpu')
-    batch_gconnectivity = global_connectivity.repeat(args.batch_size , 1, 1).to(args.device)
-    batch_connectivity = [batch_connectivity] + [batch_gconnectivity]
+    global_connectivity = torch.tensor(global_connectivity).long().to(args.device)
+    connectivity = [local_connectivity, global_connectivity]
+else:
+    connectivity = local_connectivity
+#batch_connectivity = connectivity.repeat(args.batch_size, 1, 1).to(args.device)
+
+#if global_connectivity is not None:
+#    global_connectivity = torch.tensor(global_connectivity).long().unsqueeze(0).to('cpu')
+#    batch_gconnectivity = global_connectivity.repeat(args.batch_size , 1, 1).to(args.device)
+#    batch_connectivity = [batch_connectivity] + [batch_gconnectivity]
 ######################
 # initialization
 if torch.cuda.device_count() > 1:
-    model = nn.DataParallel(nets.load_net(args, batch_connectivity, args.num_global_control)).to(args.device)
+    model = nn.DataParallel(nets.load_net(args, connectivity, args.num_global_control)).to(args.device)
     freq_params = model.module.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
     criterion = nn.DataParallel(nets.criterion(args.time_weight)).to(args.device)
 else:
-    model = nets.load_net(args, batch_connectivity, args.num_global_control).to(args.device)
+    model = nets.load_net(args, connectivity, args.num_global_control).to(args.device)
     freq_params = model.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
     criterion = nets.criterion(args.time_weight).to(args.device)
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number

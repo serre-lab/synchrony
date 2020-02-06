@@ -21,7 +21,7 @@ class KuraNet(nn.Module):
         self.connectivity = connectivity
         self.osci = km(img_side**2, update_rate=update_rate, batch_size=batch_size,
                        anneal=anneal, time_steps=time_steps,
-                       connectivity=connectivity, num_global=num_global,
+                       connectivity0=connectivity, num_global=num_global,
                        record_steps=record_steps,
                        phase_initialization=phase_initialization,
                        walk_step=walk_step, device=device,
@@ -121,6 +121,7 @@ class Unet(KuraNet):
         self.reset_params()
 
     def forward(self, x):
+        ipdb.set_trace()
         x_in = x
         encoder_outs = []
 
