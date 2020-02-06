@@ -114,10 +114,10 @@ local_connectivity, global_connectivity = \
                           num_global_control=args.num_global_control,
                           p_rewire=args.p_rewire, rf_type=args.rf_type)
 
-local_connectivity = torch.tensor(local_connectivity).long().to(args.device)
+local_connectivity = torch.tensor(local_connectivity).long()
 
 if global_connectivity is not None:
-    global_connectivity = torch.tensor(global_connectivity).long().to(args.device)
+    global_connectivity = torch.tensor(global_connectivity).long()
     connectivity = [local_connectivity, global_connectivity]
 else:
     connectivity = local_connectivity

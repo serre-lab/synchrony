@@ -58,31 +58,31 @@ class Kuramoto(object):
 
     def phase_init(self, initialization='random', **kwargs):
         if initialization == 'random':
-            self.phase_0 = lambda b : 2*np.pi * torch.rand((self.batch_size, self.N + self.gN)).to(self.device).float()
+            self.phase_0 = lambda b : 2*np.pi * torch.rand((self.batch_size, self.N + self.gN)).float()
         elif initialization == 'fixed':
-            self.current_phase = 2*np.pi * torch.rand((1,self.N + self.gN)).to(self.device).float()
+            self.current_phase = 2*np.pi * torch.rand((1,self.N + self.gN)).float()
             self.phase_0 = lambda b : self.current_phase.repeat(b, 1)
         elif initialization == 'gaussian':
-            self.phase_0 = lambda b : torch.normal(0., .1, (b, self.N + self.gN)).to(self.device).float()
+            self.phase_0 = lambda b : torch.normal(0., .1, (b, self.N + self.gN)).float()
         elif initialization == 'categorical':
-            self.phase_0 = lambda b : torch.randint(0, 4, (b, self.N + self.gN)).to(self.device).float() * 2*np.pi / 4.
+            self.phase_0 = lambda b : torch.randint(0, 4, (b, self.N + self.gN)).float() * 2*np.pi / 4.
         elif initialization == 'random_walk':
-            self.current_phase = 2*np.pi * torch.rand((1,self.N + self.gN)).to(self.device).float()
+            self.current_phase = 2*np.pi * torch.rand((1,self.N + self.gN)).float()
             self.gamma = kwargs['walk_step']
             def walk(b): 
                 if self.current_phase.shape[0] != b: self.current_phase = self.current_phase.repeat(b,1)
-                self.current_phase+= self.gamma*2*np.pi * torch.rand((b,self.N + self.gN)).to(self.device).float()
+                self.current_phase+= self.gamma*2*np.pi * torch.rand((b,self.N + self.gN)).float()
                 return self.current_phase
             self.phase_0 = walk
         return True
 
     def frequency_init(self, initialization='zero'):
         if initialization == 'gaussian':
-            self.omega = lambda x,b : 2*np.pi * torch.normal((b, self.N + self.gN)).to(self.device)
+            self.omega = lambda x,b : 2*np.pi * torch.normal((b, self.N + self.gN))
         elif initialization == 'zero':
-            self.omega = lambda x,b : torch.zeros((b,self.N + self.gN)).to(self.device)
+            self.omega = lambda x,b : torch.zeros((b,self.N + self.gN))
         elif initialization == 'learned':
-            self.freq_net = nets.autoencoder(int(np.sqrt(self.N)), num_global_control=self.gN).to(self.device)
+            self.freq_net = nets.autoencoder(int(np.sqrt(self.N)), num_global_control=self.gN)
             self.omega = lambda x,b : self.freq_net.forward(x).reshape(b, -1)
         return True
 
@@ -103,48 +103,52 @@ class Kuramoto(object):
         self.phase = self.phase + self.delta + omega
         return self.phase
     
-    def _update3(self, coupling, omega):
+    def _update3(self, phase, coupling, omega):
         # efficient, much less memory usage
         n = coupling.shape[2]
+ 
         self.delta = self.eps * \
-                     (torch.bmm(coupling, torch.sin(self.phase).unsqueeze(2).float()).squeeze(2) * torch.cos(self.phase) -
-                     torch.bmm(coupling, torch.cos(self.phase).unsqueeze(2).float()).squeeze(2) * torch.sin(self.phase)) / n
-        self.phase = self.phase + self.delta + omega
-        return self.phase
+                     (torch.bmm(coupling, torch.sin(phase).unsqueeze(2).float()).squeeze(2) * torch.cos(phase) -
+                     torch.bmm(coupling, torch.cos(phase).unsqueeze(2).float()).squeeze(2) * torch.sin(phase)) / n
+        phase = phase + self.delta + omega
+        return phase
 
     def evolution(self, coupling, batch=None, hierarchical=False):
-      
-        b = coupling.shape[0] 
-        self.phase = self.phase_0(b) 
+    
+        b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0] 
+        dv = coupling[0].device if self.gN > 0 else coupling.device
+        phase = self.phase_0(b)
         self.eps = self.update_rate
         omega = self.omega(batch,b)
-        phase_list = [self.phase]
+        phase_list = [phase.to(dv)]
         if hierarchical:
+            batch_lconnectivity = self.connectivity0[0].unsqueeze(0).repeat(coupling[0].shape[0],1,1).to(dv)
+            batch_gconnectivity = self.connectivity0[1].unsqueeze(0).repeat(coupling[1].shape[0],1,1).to(dv)
             local_coupling=torch.zeros(coupling[0].shape[0],
                                        coupling[0].shape[1],
-                                       self.phase.shape[1]).to(self.device).scatter_(dim=2,
-                                       index=self.connectivity0[0].unsqueeze(0).repeat(coupling[0].shape[0], 1, 1), src=coupling[0])
+                                       phase.shape[1]).to(dv).scatter_(dim=2,
+                                       index=batch_lconnectivity, src=coupling[0])
 
             global_coupling=torch.zeros(coupling[1].shape[0],
                                        coupling[1].shape[1],
-                                       self.phase.shape[1]).to(self.device).scatter_(dim=2,
-                                       index=self.connectivity0[1].unsqueeze(0).repeat(coupling[1].shape[0], 1, 1),src=coupling[1])
+                                       phase.shape[1]).to(dv).scatter_(dim=2,
+                                       index=batch_gconnectivity,src=coupling[1])
 
-            coupling = torch.zeros(self.phase.shape[0], self.phase.shape[1], self.phase.shape[1]).to(self.device)
+            coupling = torch.zeros(phase.shape[0], phase.shape[1], phase.shape[1]).to(dv)
             coupling[:, :local_coupling.shape[1], :] += local_coupling
             coupling[:, local_coupling.shape[1]:, :] += global_coupling
 
         else:
-            coupling = torch.zeros(coupling.shape[0], coupling.shape[1],
-                                   coupling.shape[1]).to(self.device).scatter_(dim=2,index=self.connectivity0.unsqueeze(0).repeat(coupling.shape[0], 1, 1),src=coupling)
+            batch_lconnectivity = self.connectivity0.unsqueeze(0).repeat(coupling.shape[0],1,1).to(dv)
+            coupling = torch.zeros(phase.shape[0], phase.shape[1], phase.shape[1]).to(dv).scatter_(dim=2,index=batch_lconnectivity, src=coupling)
 
         for i in range(self.time_steps):
-            new = self.update(coupling, omega)
+            new = self.update(phase.to(dv), coupling, omega.to(dv))
             self.eps_anneal(i)
             if i > (self.time_steps - 1 - self.record_steps):
                 phase_list.append(new)
         try:
-            return phase_list, coupling, omega
+            return phase_list, coupling, omega.to(dv)
         except RuntimeError:
             print('No updating')
     

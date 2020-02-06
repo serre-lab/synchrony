@@ -121,7 +121,6 @@ class Unet(KuraNet):
         self.reset_params()
 
     def forward(self, x):
-        ipdb.set_trace()
         x_in = x
         encoder_outs = []
 
