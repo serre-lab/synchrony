@@ -1,7 +1,7 @@
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-plt.ioff()
+# plt.ioff()
 import matplotlib.animation as animation
 import matplotlib.colors as colors
 import matplotlib.cm as cm
@@ -17,15 +17,23 @@ class displayer(object):
     matplotlib 3.1.1
     """
     def __init__(self, interactive=False, phases=None, freqs=None, masks=None):
-        if interactive:
-            import matplotlib.pyplot as plt
-            global plt
-        else:
-            import matplotlib
+        # if interactive:
+        #     import matplotlib.pyplot as plt
+        #     # if 'plt' not in globals():
+        #     #     global plt
+        # else:
+        #     # import matplotlib
+        #     matplotlib.use('Agg')
+        #     # import matplotlib.pyplot as plt
+        #     plt.ioff()
+            
+        #     # if 'plt' not in globals():
+        #     #     global plt
+
+
+        if not interactive:
             matplotlib.use('Agg')
-            import matplotlib.pyplot as plt
             plt.ioff()
-            global plt
 
         if id(phases) != id(None) & id(freqs) != id(None):
             self.phases = np.squeeze(np.array(phases, dtype=np.float32))

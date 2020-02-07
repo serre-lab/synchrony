@@ -8,6 +8,9 @@ import numpy as np
 from tqdm import tqdm
 from itertools import permutations
 
+from sklearn import preprocessing
+from sklearn.cluster import KMeans, DBSCAN
+from sklearn.mixture import BayesianGaussianMixture
 
 """
 1. Read a batch of data (specified by a list of indices) through numpy.load
@@ -224,3 +227,24 @@ def get_cn(num_cn, coord, img_side, sw):
     else:
         extra = np.ones((num_cn - cn.shape[0])) * (coord[0] + coord[1] * img_side)
     return np.concatenate([cn, extra], axis=0).astype(np.int)
+
+def clustering(phase, n_clusters):
+    re = np.cos(phase)
+    im = np.sin(phase)
+    x = [(r,i) for (r,i) in zip(re, im)]
+        
+    normalized_x = preprocessing.normalize(x)
+
+    km = KMeans(n_clusters=n_clusters)
+    km.fit(normalized_x)
+    labels = km.labels_
+    
+    
+    # db = DBSCAN(eps=0.02).fit(x)
+    # labels = db.labels_
+
+    # bgm = BayesianGaussianMixture(n_components=5, weight_concentration_prior=0.01).fit(x)
+    # bgm = BayesianGaussianMixture(n_components=n_clusters).fit(x)
+    # labels = bgm.predict(x)
+
+    return labels
