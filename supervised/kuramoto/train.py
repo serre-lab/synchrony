@@ -147,7 +147,7 @@ loss_history_test = []
 sbd_history_test=[]
 coupling_history = []
 
-displayer = disp.displayer(interactive=args.interactive)
+displayer = disp.displayer(args.segments, interactive=args.interactive)
 if args.intrinsic_frequencies == 'learned':
     params = tuple([q1 for q1 in model.parameters()] + [q2 for q2 in freq_params])
 else:

@@ -10,13 +10,14 @@ import numpy as np
 import sys
 import losses
 import copy
+from utils import clustering
 #import ipdb
 
 class displayer(object):
     """
     matplotlib 3.1.1
     """
-    def __init__(self, interactive=False, phases=None, freqs=None, masks=None):
+    def __init__(self, segments, interactive=False, phases=None, freqs=None, masks=None):
         # if interactive:
         #     import matplotlib.pyplot as plt
         #     # if 'plt' not in globals():
@@ -30,7 +31,7 @@ class displayer(object):
         #     # if 'plt' not in globals():
         #     #     global plt
 
-
+        self.segments = segments
         if not interactive:
             matplotlib.use('Agg')
             plt.ioff()
@@ -392,21 +393,27 @@ class displayer(object):
         phase_list = [self.phases[i * interval] for i in range(5)]
         phase_list[-1] = self.phases[-1]
 
-        fig, axes = plt.subplots(1, 7, figsize=(8, 4))
+        fig, axes = plt.subplots(1, 8, figsize=(8, 4))
         axes.reshape(-1)
         axes[0].imshow(np.reshape(input, (nrows, ncols)), cmap='gray')
         axes[0].axis('off')
         axes[0].title.set_text('input')
         for i in range(5):
-            axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv')
+            axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
             axes[i + 1].axis('off')
             if i == 4:
                 axes[i + 1].title.set_text('last_step')
             else:
                 axes[i + 1].title.set_text('step' + str(int(i * interval)))
-        axes[6].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
+        
+        clustered_phase = clustering(phase_list[-1], n_clusters=self.segments)
+        axes[6].imshow(np.reshape(clustered_phase, (nrows, ncols)), cmap='hsv', vmin=0, vmax=self.segments)
         axes[6].axis('off')
-        axes[6].title.set_text('mask')
+        axes[6].title.set_text('clustering')
+
+        axes[7].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
+        axes[7].axis('off')
+        axes[7].title.set_text('mask')
         cbar_ax = fig.add_axes([0.95, 0.31, 0.01, 0.38])
         #plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
         #                               cmap='hsv'), cax=cbar_ax)
