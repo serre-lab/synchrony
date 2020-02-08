@@ -87,11 +87,7 @@ def kura_param_show(coupling, omega, img_side, path, name):
         plt.close()
 
         # top down
-        top_down = coupling[:-num_global, -num_global:].sum(1)
-        top_down = np.concatenate(list(map(lambda a: np.hstack(a),
-                                           np.split(top_down.reshape(num_global, int(img_side/s),
-                                                                     int(img_side/s)), s, axis=0))), axis=0)
-        im = plt.imshow(top_down)
+        im = plt.imshow(coupling[:-num_global, -num_global:].sum(1).reshape(img_side, img_side))
         plt.colorbar(im)
         plt.gca().grid(False)
         plt.axis('off')
@@ -99,11 +95,7 @@ def kura_param_show(coupling, omega, img_side, path, name):
         plt.close()
 
         # bottom up
-        bottom_up = coupling[-num_global:, :-num_global].sum(0)
-        bottom_up = np.concatenate(list(map(lambda a: np.hstack(a),
-                                            np.split(bottom_up.reshape(num_global, int(img_side / s),
-                                                                       int(img_side / s)), s, axis=0))), axis=0)
-        im = plt.imshow(bottom_up)
+        im = plt.imshow(coupling[-num_global:, :-num_global].sum(0).reshape(img_side, img_side))
         plt.colorbar(im)
         plt.gca().grid(False)
         plt.axis('off')
@@ -207,13 +199,14 @@ def get_cn(num_cn, coord, img_side, sw):
     dist_list = np.concatenate([np.tile(np.arange(1, dist).reshape(dist - 1, -1), 2),
                                 np.stack(list(permutations(np.arange(dist).tolist(), 2)), axis=0)], axis=0)
     dist_list = np.concatenate([dist_list, np.expand_dims((dist_list ** 2).sum(1), axis=1)], axis=1)
-    dist_list = np.sort(dist_list.view('i8, i8, i8'), order=['f2'], axis=0).view(np.int).tolist()
+    # dist_list = np.sort(dist_list.view('i8, i8, i8'), order=['f2'], axis=0).view(np.int).tolist()
+    dist_list = dist_list[dist_list[:, 1].argsort()]
     cn = []
     for p in dist_list:
         if 0 in p:
-            direction_list = [(p[0], p[1]), (-p[0], -p[1])]
+            direction_list = [(-p[0], -p[1]), (p[0], p[1])]
         else:
-            direction_list = [(p[0], p[1]), (-p[0], -p[1]), (-p[0], p[1]), (p[0], -p[1])]
+            direction_list = [(-p[0], -p[1]), (p[0], -p[1]), (-p[0], p[1]), (p[0], p[1])]
         for d in direction_list:
             if len(cn) < num_cn:
                 new_coord = np.array(d) + np.array(coord)
