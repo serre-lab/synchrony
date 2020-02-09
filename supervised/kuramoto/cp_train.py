@@ -12,7 +12,6 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 import display as disp
 import sys
-from losses import calc_sbd
 from utils import *
 import ipdb
 import warnings
@@ -122,6 +121,7 @@ if global_connectivity is not None:
     connectivity = [local_connectivity, global_connectivity]
 else:
     connectivity = local_connectivity
+
 ######################
 # initialization
 if torch.cuda.device_count() > 1:
@@ -133,14 +133,13 @@ else:
     freq_params = model.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
     criterion = nets.criterion(args.time_weight).to(args.device)
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
+time.sleep(2)
 
 loss_history = []
-sbd_history=[]
 loss_history_test = []
-sbd_history_test=[]
 coupling_history = []
 
-displayer = disp.displayer(args.segments, interactive=args.interactive)
+displayer = disp.displayer(interactive=args.interactive)
 if args.intrinsic_frequencies == 'learned':
     params = tuple([q1 for q1 in model.parameters()] + [q2 for q2 in freq_params])
 else:
@@ -155,8 +154,6 @@ for epoch in range(args.train_epochs):
     print('Epoch: {}'.format(epoch))
 
     l=0
-    sbd = 0
-    
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
@@ -164,9 +161,6 @@ for epoch in range(args.train_epochs):
         op.zero_grad()
         phase_list_train, coupling_train, omega_train = model(batch.unsqueeze(1))
 
-        last_phase = phase_list_train[-1].cpu().detach().numpy()
-        colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
-        
         tavg_loss = criterion(phase_list_train, mask, args.transform, args.device)
         tavg_loss = tavg_loss.mean() / norm
         tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
@@ -176,29 +170,16 @@ for epoch in range(args.train_epochs):
        
         # visualize training
         if step % args.show_every == 0:
-            for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                clustered_phase = clustering(sample_phase, n_clusters=args.segments)
-                sbd += calc_sbd(clustered_phase+1, sample_mask+1)
-
             display(displayer, phase_list_train, batch, mask, coupling_train, omega_train, args.img_side, args.segments, save_dir,
                 'train{}_{}'.format(epoch,step), args.rf_type)
     loss_history.append(l / step)
-    sbd_history.append(sbd / (step * args.batch_size / float(args.show_every)))
     l=0
-    sbd = 0
-
     for step, (test_data, _) in tqdm(enumerate(testing_loader)):
         # cross-validation
         batch = test_data[:,  0, ...].float().to(args.device)
         mask = test_data[:, 1:, ...].reshape(-1, args.segments, args.img_side * args.img_side).float().to(args.device)
 
         phase_list_test, coupling_test, omega_test = model(batch.unsqueeze(1))
-        
-        last_phase = phase_list_test[-1].cpu().detach().numpy()
-        colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
-        for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-            clustered_phase = clustering(sample_phase, n_clusters=args.segments)
-            sbd += calc_sbd(clustered_phase+1, sample_mask+1)
 
         tavg_loss_test = criterion(phase_list_test, mask, args.transform, args.device, True)
         tavg_loss_test = tavg_loss_test.mean() / norm
@@ -213,7 +194,7 @@ for epoch in range(args.train_epochs):
         if step*args.batch_size > num_test:
             break
     loss_history_test.append(l /step)
-    sbd_history_test.append(sbd / (step * args.batch_size))
+
 
     # save file s
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
@@ -226,11 +207,4 @@ for epoch in range(args.train_epochs):
     plt.title('Time Averaged Loss')
     plt.legend(['train', 'valid'])
     plt.savefig(save_dir + '/loss' + '.png')
-    plt.close()
-
-    plt.plot(np.array(sbd_history))
-    plt.plot(np.array(sbd_history_test))
-    plt.title('Symmetric Best Dice')
-    plt.legend(['train', 'valid'])
-    plt.savefig(save_dir + '/sbd' + '.png')
     plt.close()
