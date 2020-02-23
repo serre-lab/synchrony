@@ -167,7 +167,7 @@ for epoch in range(args.train_epochs):
         last_phase = phase_list_train[-1].cpu().detach().numpy()
         colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
         
-        tavg_loss = criterion(phase_list_train, mask, args.transform, args.device)
+        tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, args.device)
         tavg_loss = tavg_loss.mean() / norm
         tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
         l+=tavg_loss.data.cpu().numpy()
@@ -175,12 +175,13 @@ for epoch in range(args.train_epochs):
         op.step()
        
         # visualize training
+        clustered_batch = []
         if step % args.show_every == 0:
             for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                clustered_phase = clustering(sample_phase, n_clusters=args.segments)
-                sbd += calc_sbd(clustered_phase+1, sample_mask+1)
+                clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
+                sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
 
-            display(displayer, phase_list_train, batch, mask, coupling_train, omega_train, args.img_side, args.segments, save_dir,
+            display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
                 'train{}_{}'.format(epoch,step), args.rf_type)
     loss_history.append(l / step)
     sbd_history.append(sbd / (step * args.batch_size / float(args.show_every)))
@@ -196,11 +197,13 @@ for epoch in range(args.train_epochs):
         
         last_phase = phase_list_test[-1].cpu().detach().numpy()
         colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
-        for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-            clustered_phase = clustering(sample_phase, n_clusters=args.segments)
-            sbd += calc_sbd(clustered_phase+1, sample_mask+1)
 
-        tavg_loss_test = criterion(phase_list_test, mask, args.transform, args.device, True)
+        clustered_batch = []
+        for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
+            clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
+            sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+
+        tavg_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, args.device, True)
         tavg_loss_test = tavg_loss_test.mean() / norm
         tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
         l+=tavg_loss_test.data.cpu().numpy()
@@ -208,10 +211,10 @@ for epoch in range(args.train_epochs):
         if step % args.show_every == 0:
             # visualize validation and save
             # validation example, save its coupling matrix
-            display(displayer, phase_list_test, batch, mask, coupling_test, omega_test, args.img_side, args.segments, save_dir, 
+            display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test, args.img_side, args.segments, save_dir, 
             'test{}_{}'.format(epoch, step), args.rf_type)
-        if step*args.batch_size > num_test:
-            break
+        #if step*args.batch_size > num_test:
+        #    break
     loss_history_test.append(l /step)
     sbd_history_test.append(sbd / (step * args.batch_size))
 
@@ -234,3 +237,8 @@ for epoch in range(args.train_epochs):
     plt.legend(['train', 'valid'])
     plt.savefig(save_dir + '/sbd' + '.png')
     plt.close()
+
+    np.save(os.path.join(save_dir, 'train_loss.npy'), np.array(loss_history))
+    np.save(os.path.join(save_dir, 'valid_loss.npy'), np.array(loss_test_history))
+    np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_train_history))
+    np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_test_history))

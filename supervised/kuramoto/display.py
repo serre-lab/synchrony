@@ -387,13 +387,17 @@ class displayer(object):
     def max_partition_freq(self, mask):
         partition_phases = [self.phases[m] for m in mask]
 
-    def static_evol(self, nrows, ncols, input, save_name, mask):
+    def static_evol(self, clustered_last_phase, nrows, ncols, input, save_name, mask):
         interval = int(self.phases.shape[0] / 5)
+        if self.phases.shape[0] > 1:
+            phase_list = [self.phases[i * interval] for i in range(5)]
+        else:
+            phase_list = [self.phases[0] for i in range(5)]
 
         phase_list = [self.phases[i * interval] for i in range(5)]
         phase_list[-1] = self.phases[-1]
 
-        fig, axes = plt.subplots(1, 8, figsize=(8, 4))
+        fig, axes = plt.subplots(1, 7, figsize=(8, 4))
         axes.reshape(-1)
         axes[0].imshow(np.reshape(input, (nrows, ncols)), cmap='gray')
         axes[0].axis('off')
@@ -402,19 +406,16 @@ class displayer(object):
             axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
             axes[i + 1].axis('off')
             if i == 4:
+                axes[i + 1].title.set_text('quantized')
+            elif i == 3:
                 axes[i + 1].title.set_text('last_step')
             else:
                 axes[i + 1].title.set_text('step' + str(int(i * interval)))
         
-        clustered_phase = clustering(phase_list[-1], n_clusters=self.segments)
-        axes[6].imshow(np.reshape(clustered_phase, (nrows, ncols)), cmap='hsv', vmin=0, vmax=self.segments)
+        axes[6].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
         axes[6].axis('off')
-        axes[6].title.set_text('clustering')
-
-        axes[7].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
-        axes[7].axis('off')
-        axes[7].title.set_text('mask')
-        cbar_ax = fig.add_axes([0.95, 0.31, 0.01, 0.38])
+        axes[6].title.set_text('mask')
+        #cbar_ax = fig.add_axes([0.95, 0.31, 0.01, 0.38])
         #plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
         #                               cmap='hsv'), cax=cbar_ax)
         ax2 = fig.add_axes([0.07, 0.15, 0.88, 0.1])

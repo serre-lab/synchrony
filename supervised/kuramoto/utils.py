@@ -7,6 +7,7 @@ import torch as tc
 import numpy as np
 from tqdm import tqdm
 from itertools import permutations
+import ipdb
 
 from sklearn import preprocessing
 from sklearn.cluster import KMeans, DBSCAN
@@ -40,7 +41,7 @@ def read_data(data_inds, path, img_side, group_size, device='cuda', valid=False)
         return tc.tensor(images).float().detach().to(device), tc.tensor(masks).float().detach().to(device)
 
 
-def display(displayer, phase_list, images, masks, coupling, omega, img_side, group_size, path, name, rf_type):
+def display(displayer, phase_list, images, masks, clustered_batch, coupling, omega, img_side, group_size, path, name, rf_type):
     # randomly select images to display
     ind = np.random.randint(images.shape[0])
     image = images[ind].cpu().data.numpy()
@@ -50,13 +51,14 @@ def display(displayer, phase_list, images, masks, coupling, omega, img_side, gro
     np_phase_list = np.array([phase.cpu().data.numpy()[ind, :] for phase in phase_list])
 
     colored_mask = (np.expand_dims(np.expand_dims(np.arange(group_size), axis=0), axis=-1) * mask / group_size).sum(1)
+    clustered = clustered_batch[ind]
     displayer.set_phases(np_phase_list)
     displayer.set_masks(mask)
     if rf_type == 'arange':
         kura_param_show(coupling, omega, img_side, path, name)
 
     if len(phase_list) > 4:
-        displayer.static_evol(img_side, img_side, image, path + '/static_' + name, colored_mask)
+        displayer.static_evol(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
         displayer.phase_evol2(path + '/phase_' + name)
     else:
         displayer.static_evol2(img_side, img_side, image, path + '/static_' + name, colored_mask)

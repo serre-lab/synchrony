@@ -25,7 +25,6 @@ class Kuramoto(object):
                  batch_size = 32,
                  num_global = 0,
                  time_steps = 10,
-                 record_steps=10,
                  anneal=0.0,
                  phase_initialization = 'random',
                  walk_step=.1,
@@ -42,7 +41,6 @@ class Kuramoto(object):
         self.eps = update_rate
         self.anneal = anneal
         self.time_steps = time_steps
-        self.record_steps=record_steps
 
         if update_fn_number == 1:
             self.update = self._update1
@@ -145,8 +143,7 @@ class Kuramoto(object):
         for i in range(self.time_steps):
             new = self.update(phase.to(dv), coupling, omega.to(dv))
             self.eps_anneal(i)
-            if i > (self.time_steps - 1 - self.record_steps):
-                phase_list.append(new)
+            phase_list.append(new)
         try:
             return phase_list, coupling, omega.to(dv)
         except RuntimeError:

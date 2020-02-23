@@ -13,7 +13,7 @@ import ipdb
 
 class KuraNet(nn.Module):
     def __init__(self, img_side, connectivity, num_global, batch_size=32, device='cpu',
-                 update_rate=.1, anneal=0, time_steps=10, record_steps=10, phase_initialization='random', walk_step=.1, intrinsic_frequencies='zero'):
+                 update_rate=.1, anneal=0, time_steps=10, phase_initialization='random', walk_step=.1, intrinsic_frequencies='zero'):
         super(KuraNet, self).__init__()
 
         self.img_side = img_side
@@ -22,7 +22,6 @@ class KuraNet(nn.Module):
         self.osci = km(img_side**2, update_rate=update_rate, batch_size=batch_size,
                        anneal=anneal, time_steps=time_steps,
                        connectivity0=connectivity, num_global=num_global,
-                       record_steps=record_steps,
                        phase_initialization=phase_initialization,
                        walk_step=walk_step, device=device,
                        intrinsic_frequencies=intrinsic_frequencies)
@@ -80,7 +79,7 @@ class Unet(KuraNet):
         """
         Unet for semantic segmentation
         """
-        super(Unet, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+        super(Unet, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
         self.num_cn = args.num_cn
         self.img_side = args.img_side
@@ -171,7 +170,7 @@ class simple_conv(KuraNet):
         """
         For various image size, feature maps are all in the same shape as input
         """
-        super(simple_conv, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, record_steps=args.record_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+        super(simple_conv, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
         self.num_cn = args.num_cn
         self.num_global = num_global
