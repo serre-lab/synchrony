@@ -11,7 +11,7 @@ import sys
 import losses
 import copy
 from utils import clustering
-#import ipdb
+import ipdb
 
 class displayer(object):
     """
@@ -388,14 +388,13 @@ class displayer(object):
         partition_phases = [self.phases[m] for m in mask]
 
     def static_evol(self, clustered_last_phase, nrows, ncols, input, save_name, mask):
-        interval = int(self.phases.shape[0] / 5)
+        interval = int(np.ceil(self.phases.shape[0] / 5.))
         if self.phases.shape[0] > 1:
             phase_list = [self.phases[i * interval] for i in range(5)]
         else:
             phase_list = [self.phases[0] for i in range(5)]
-
-        phase_list = [self.phases[i * interval] for i in range(5)]
-        phase_list[-1] = self.phases[-1]
+        phase_list[-2] = self.phases[-1]
+        phase_list[-1] = clustered_last_phase
 
         fig, axes = plt.subplots(1, 7, figsize=(8, 4))
         axes.reshape(-1)
