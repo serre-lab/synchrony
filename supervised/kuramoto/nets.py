@@ -32,6 +32,8 @@ def load_net(args, connectivity, num_global):
         return simple_conv(args, connectivity, num_global)
     elif args.model_name == 'Unet':
         return Unet(args, connectivity, num_global)
+    elif args.model_name == 'Unetbaseline':
+        return Unetbaseline(args, connectivity, num_global)
     else:
         raise ValueError('Network not included so far')
 
@@ -164,6 +166,83 @@ class Unet(KuraNet):
         for i, m in enumerate(self.modules()):
             self.weights_init(m)
 
+class Unetbaseline(nn.Module):
+    def __init__(self, args, connectivity, num_global):
+        """
+        Unet for semantic segmentation
+        """
+        super(Unetbaseline, self).__init__()
+
+        self.connections = args.num_cn
+        self.img_side = args.img_side
+        self.out_channels = args.out_channels
+        if num_global > 0: self.out_channels += 1
+        self.split = args.split
+        self.batch_size = args.batch_size
+        self.num_global = num_global
+        self.down_convs = []
+        self.up_convs = []
+
+        # create a encoder pathway
+        for i in range(args.depth):
+            ins = args.in_channels if i == 0 else outs
+            outs = args.start_filts * (2 ** i)
+            pooling = True if i < args.depth - 1 else False
+
+            down_conv = DownConv(ins, outs, args.kernel_size[0], pooling)
+            self.down_convs.append(down_conv)
+
+        # create a decoder pathway
+        for i in range(args.depth - 1):
+            ins = outs
+            outs = ins // 2
+            up_conv = UpConv(ins, outs, args.kernel_size[1])
+            self.up_convs.append(up_conv)
+
+        self.down_convs = nn.ModuleList(self.down_convs)
+        self.up_convs = nn.ModuleList(self.up_convs)
+        self.linearend = nn.Linear(int(self.out_channels*args.img_side**2), int(args.img_side**2))
+
+        self.conv_final = nn.Conv2d(outs, self.out_channels, kernel_size=1, stride=1, padding=0)
+        if num_global == 0:
+            self.linear = nn.Linear(int((self.out_channels/args.split) * (args.img_side ** 2)),
+                                    int(((args.img_side ** 2)/args.split) * args.num_cn))
+        else:
+            self.linear1 = nn.Linear(int(((self.out_channels)/args.split) * (args.img_side ** 2)),
+                                     int(((args.img_side ** 2)/args.split) * (args.num_cn + 1)))
+            self.linear2 = nn.Linear((args.img_side ** 2), args.img_side ** 2 + num_global ** 2 - num_global)
+        self.reset_params()
+
+    def forward(self, x):
+        x_in = x
+        encoder_outs = []
+
+        for i, module in enumerate(self.down_convs):
+            x, before_pool = module(x)
+            encoder_outs.append(before_pool)
+
+        for i, module in enumerate(self.up_convs):
+            before_pool = encoder_outs[-(i + 2)]
+            x = module(before_pool, x)
+
+        x = self.conv_final(x)
+
+        x = self.linearend(x.reshape([self.batch_size,-1]))
+        #x1 = torch.zeros([1,args.img_side**2])
+
+        return [x,x],None,None
+
+    @staticmethod
+    def weights_init(m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.xavier_normal_(m.weight)
+            nn.init.constant_(m.bias, 0)
+
+    def reset_params(self):
+        for i, m in enumerate(self.modules()):
+            self.weights_init(m)           
+            
+        
 
 class simple_conv(KuraNet):
     def __init__(self, args, connectivity, num_global):
