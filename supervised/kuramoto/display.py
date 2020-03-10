@@ -388,7 +388,7 @@ class displayer(object):
         partition_phases = [self.phases[m] for m in mask]
 
     def static_evol(self, clustered_last_phase, nrows, ncols, input, save_name, mask):
-        interval = int(np.ceil(self.phases.shape[0] / 5.))
+        interval = int(np.floor(self.phases.shape[0] / 5.))
         if self.phases.shape[0] > 1:
             phase_list = [self.phases[i * interval] for i in range(5)]
         else:

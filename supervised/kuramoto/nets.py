@@ -337,27 +337,37 @@ class simple_conv(KuraNet):
 
 
 class criterion(nn.Module):
-    def __init__(self, degree):
+    def __init__(self, degree, in_size, device='cpu', classify=False):
         super(criterion, self).__init__()
-
+        self.classify = classify
+        if self.classify: 
+            self.classifier = read_out(in_size).to(device)
+            self.classifier_loss = torch.nn.BCEWithLogitsLoss()
+        self.device = device
         self.degree = degree
 
-    def forward(self, phase_list, mask, transform, device, valid=False):
+    def forward(self, phase_list, mask, transform, valid=False, targets=None):
         # losses will be 1d, with its length = episode length
-        if valid:
-            losses = \
-                ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
+        if not self.classify:
+            if valid:
+                losses = \
+                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
-                                          device).reshape(len(phase_list), mask.shape[0]).mean(1)
-        else:
-            losses = \
-                ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
+                                          self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
+            else:
+                losses = \
+                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform,
-                                          device).reshape(len(phase_list), mask.shape[0]).mean(1)
-        return torch.matmul(losses,
-                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(device))
+                                          self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
+            return torch.matmul(losses,
+                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
+        else:
+            losses = 0
+            for p, phase in enumerate(phase_list):
+                losses += self.classifier_loss(self.classifier.forward(phase), targets) * (p+1)**self.degree
+            return losses
 
 
 class regularizer(nn.Module):
@@ -505,3 +515,18 @@ class autoencoder(nn.Module):
             x = self.decoder(x)
             return x.reshape(x.shape[0], -1)
 
+class read_out(nn.Module):
+    def __init__(self,in_size):
+        super(read_out, self).__init__()
+
+        self.layers = nn.Sequential(torch.nn.Linear(in_size, 256),
+                                    nn.Tanh(),
+                                    torch.nn.Linear(256,2))
+    def forward(self,phase):
+        real = torch.cos(phase)
+        imag = torch.sin(phase)
+        cplx = []
+        for part in [real, imag]:
+            cplx.append(self.layers(part))
+        return torch.sqrt(cplx[0]**2 + cplx[1]**2)
+        

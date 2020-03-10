@@ -118,7 +118,6 @@ class Kuramoto(object):
         phase = self.phase_0(b)
         self.eps = self.update_rate
         omega = self.omega(batch,b)
-        ipdb.set_trace()
         phase_list = [phase.to(dv)]
         if hierarchical:
             batch_lconnectivity = self.connectivity0[0].unsqueeze(0).repeat(coupling[0].shape[0],1,1).to(dv)
