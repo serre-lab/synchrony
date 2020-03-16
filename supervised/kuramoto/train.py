@@ -98,7 +98,7 @@ num_test = 1000
 ######################
 # path
 load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data/', args.data_name, str(args.segments))
-save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/', args.exp_name)
+save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/aneri', args.exp_name)
 model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models/', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
@@ -138,10 +138,12 @@ if torch.cuda.device_count() > 1 and args.device=='cuda':
     model = nn.DataParallel(nets.load_net(args, connectivity, args.num_global_control)).to(args.device)
     freq_params = model.module.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
     criterion = nn.DataParallel(nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, device=args.device)).to(args.device)
+    classifier_params = criterion.module.classifier.parameters() if args.classify is True else []
 else:
     model = nets.load_net(args, connectivity, args.num_global_control).to(args.device)
     freq_params = model.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
     criterion = nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, device=args.device).to(args.device)
+    classifier_params = criterion.classifier.parameters() if args.classify is True else []
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
 
 loss_history = []
@@ -156,7 +158,7 @@ if args.intrinsic_frequencies == 'learned':
 else:
     params = list(model.parameters())
 if args.classify is True:
-    params += [q3 for q3 in criterion.classifier.parameters()]
+    params += [q3 for q3 in classifier_params]
 
 params = tuple(params)
 
@@ -166,12 +168,18 @@ op = torch.optim.Adam(params, lr=args.learning_rate)
 # training pipeline
 norm = np.sum(np.arange(1, args.time_steps + 1) ** 2)
 counter = 0
+PL_train = []
+PL_val = []
+clustering_train = []
+clustering_val = []
 for epoch in range(args.train_epochs):
     print('Epoch: {}'.format(epoch))
 
     l=0
     sbd = 0
-    
+    cont_epoch = True
+    PL_epoch = []
+    clustering_epoch = []
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
@@ -246,17 +254,18 @@ for epoch in range(args.train_epochs):
     if args.cluster == True:
         clustering_train.append(np.mean(np.array(clustering_epoch))) 
         
-    #if np.logical_and(args.path_length == True, cont_epoch == True):
-    #    PL_train.append(np.mean(np.array(PL_epoch)))
-    #else: 
-    #    PL_train.append(-1)
+    if np.logical_and(args.path_length == True, cont_epoch == True):
+        PL_train.append(np.mean(np.array(PL_epoch)))
+    elif args.path_length==True: 
+        PL_train.append(-1)
             
     if step > 0:
         loss_history.append(l / step)
         sbd_history.append(sbd / (step * args.batch_size / float(args.show_every)))
     l=0
     sbd = 0
-
+    PL_epoch = []
+    clustering_epoch = []
     for step, (test_data, _) in tqdm(enumerate(testing_loader)):
         # cross-validation
         batch = test_data[:,  0, ...].float().to(args.device)
@@ -316,6 +325,12 @@ for epoch in range(args.train_epochs):
                     PL_epoch.append(this_path_length)
                         
         
+    if args.cluster == True:
+        clustering_val.append(np.mean(np.array(clustering_epoch))) 
+    if np.logical_and(args.path_length == True, cont_epoch == True):
+        PL_val.append(np.mean(np.array(PL_epoch)))
+    elif args.path_length==True: 
+        PL_val.append(-1)
     loss_history_test.append(l /step)
     sbd_history_test.append(sbd / (step * args.batch_size))
 

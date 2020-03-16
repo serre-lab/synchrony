@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import itertools
 import platform
+from numpy import linalg as LA
 if platform.python_version()[0] == '3':
     usenx = True
     import networkx as nx
@@ -38,21 +39,23 @@ class NetProp():
             print('Using self-written code')
             
             actual_coupling = np.zeros([self.img_side_squared,self.img_side_squared])
-            
+
             if self.hierarchical:
                 #need to loop through the connectivity matrix instead of img_side_swared
+                #import pdb;pdb.set_trace()
                 for i in range(self.connectivity_low.shape[1]):
                     for j in range(self.connectivity_low.shape[2]):
-                        actual_coupling[self.connectivity_low[0,i,j],i] = self.coupling_net[0,i,j]
+                        actual_coupling[self.connectivity_low[0,i,j],i] = self.coupling_net[0,i,self.connectivity_low[0,i,j]]
+                #import pdb;pdb.set_trace()
                 for i in range(self.connectivity_high.shape[1]):
                     for j in range(self.connectivity_high.shape[2]):
-                        actual_coupling[self.connectivity_high[0,i,j],i+self.connectivity_low.shape[1]] = self.coupling_net[0,i+self.connectivity_low.shape[1],j]
+                        actual_coupling[self.connectivity_high[0,i,j],i+self.connectivity_low.shape[1]-1] = self.coupling_net[0,(i+self.connectivity_low.shape[1]-1),self.connectivity_high[0,i,j]]
                         
                 
             else:
                 for i in range(self.img_side_squared):
                     for j in range(self.num_cn):
-                        actual_coupling[self.connectivity[0,i,j], i] =  self.coupling_net[0,i,j]
+                        actual_coupling[self.connectivity[0,i,j], i] =  self.coupling_net[0,i,self.connectivity[0,i,j]]
                     #again confirm direction of this --> was told that it is projections to pixel i
         
             self.actual_coupling=actual_coupling
@@ -64,17 +67,17 @@ class NetProp():
             G = nx.MultiDiGraph()
             for i in range(self.connectivity_low.shape[1]):
                 for j in range(self.connectivity_low.shape[2]):
-                    G.add_weighted_edges_from([(self.connectivity_low[0,i,j], i, self.coupling_net[0,i,j])])
+                    G.add_weighted_edges_from([(self.connectivity_low[0,i,j], i, self.coupling_net[0,i,self.connectivity_low[0,i,j]])])
             for i in range(self.connectivity_high.shape[1]):
                 for j in range(self.connectivity_high.shape[2]):
-                    G.add_weighted_edges_from([(self.connectivity_high[0,i,j], i+self.connectivity_low.shape[1], self.coupling_net[0,i+self.connectivity_low.shape[1],j])])
+                    G.add_weighted_edges_from([(self.connectivity_high[0,i,j], i+self.connectivity_low.shape[1], self.coupling_net[0,i+self.connectivity_low.shape[1],self.connectivity_high[0,i,j]])])
             
             return G
         else:
             G = nx.MultiDiGraph()
             for i in range(self.img_side_squared):
                 for j in range(self.num_cn):
-                    G.add_weighted_edges_from([(self.connectivity[0,i,j], i, self.coupling_net[0,i,j])])
+                    G.add_weighted_edges_from([(self.connectivity[0,i,j], i, self.coupling_net[0,i,self.connectivity[0,i,j]])])
                     #again confirm direction of this --> was told that it is projections to pixel i
             return G
     
@@ -208,12 +211,43 @@ class NetProp():
         Lin,Lout, Lboth = get_L(W)
         
         #using just Lboth for now
-        LA.eig(Lboth)
+        val, vec = LA.eig(Lboth)
         part = vec[np.where(val==np.sort(val)[1])]
-        partition(part[0])
-        return partition(part[0]) #returns list of two lists (one for each group)
+        part1,part2 = partition(part[0])
+        self.val = val
+        self.vec = vec
+        self.partition = [part1,part2]
+        return partition([part1,part2]) #returns list of two lists (one for each group)
+    
+    def plot_laplacian(self,save_dir, epoch, image_num, trial_type,num_glob):
+        parts = self.laplacian_partition()
+        if self.hierarchical:
+            side = int((len(self.coupling_net)-num_glob)**5+num_glob)
+        else:
+            side = int(len(self.coupling_net)**0.5)
+        Limg = np.zeros(shape = side**2)
+        for p in parts[0]:
+            Limg[p] = 0
+        for p in parts[1]:
+            Limg[p] = 255
+        Limg = np.reshape(Limg,(side,side))
+        Limg = np.repeat(Limg[:,:,np.newaxis],repeats = 3,axis = 2)
+        Limg = Limg.astype('uint8')
+        plt.imshow(Limg)
+        plt.savefig('{}/LaplacianPartioning_epoch{}_image{}_{}'.format(save_dir,epoch,image_num,trial_type))
+        frame = plt.gca()
+        frame.axes.get_xaxis().set_visible(False)
+        frame.axes.get_yaxis().set_visible(False)
+        plt.title('Paritions')
+        plt.close()
+        plt.plot(np.sort(self.val))
+        plt.ylabel('Eigenvalue')
+        plt.title('Eigenvalues')
+        plt.xticks(range(side**2))
+        plt.savefig('{}/LaplacianEigenvalues_epoch{}_image{}_{}'.format(save_dir,epoch,image_num,trial_type))
+        plt.close()
         
-                
+            
         
     def inh_exc_ratio(self):
         inh = np.sum([i<0 for i in np.nditer(self.coupling_net)])
@@ -228,6 +262,16 @@ class NetProp():
 
 
 #supporting definitions
+
+#def for global order parameter: 
+
+def phase_coherence(phases):
+    num_osc = phases.size
+    phase_sums = 0 
+    for p in np.nditer(phases):
+        phase_sums += complex(math.cos(p),math.sin(p))
+    PC = phase_sums/num_osc
+    return PC
 
 #def for laplacian, sources - to be added 
 
