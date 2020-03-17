@@ -4,7 +4,8 @@ import itertools
 import platform
 from numpy import linalg as LA
 if platform.python_version()[0] == '3':
-    usenx = True
+    #usenx = True
+    usenx = False
     import networkx as nx
 else: 
     usenx = False
@@ -20,10 +21,14 @@ class NetProp():
         self.hierarchical = hierarchical
         if hierarchical:
             self.img_side_squared = coupling_net.shape[1]
-            self.num_cn = connectivity[0].shape[2]+connectivity[1].shape[2]
+            #self.num_cn = connectivity[0].shape[2]+connectivity[1].shape[2] for when one_iamge is off
+            self.num_cn = connectivity[0].shape[1]+connectivity[1].shape[1]
+            
             self.coupling_net = coupling_net[0,:].unsqueeze(0).cpu().data.numpy()
-            self.connectivity_low = connectivity[0][0,:].unsqueeze(0).cpu().data.numpy()
-            self.connectivity_high = connectivity[1][0,:].unsqueeze(0).cpu().data.numpy()
+            self.connectivity_low = connectivity[0].unsqueeze(0).cpu().data.numpy()
+            self.connectivity_high = connectivity[1].unsqueeze(0).cpu().data.numpy()  
+            #self.connectivity_low = connectivity[0][0,:].unsqueeze(0).cpu().data.numpy()
+            #self.connectivity_high = connectivity[1][0,:].unsqueeze(0).cpu().data.numpy() #for when one_iamge is off
             
         else:
             
@@ -219,7 +224,7 @@ class NetProp():
         self.partition = [part1,part2]
         return partition([part1,part2]) #returns list of two lists (one for each group)
     
-    def plot_laplacian(self,save_dir, epoch, image_num, trial_type,num_glob):
+    def plot_laplacian(self,exp_name,save_dir, epoch, image_num, trial_type,num_glob):
         parts = self.laplacian_partition()
         if self.hierarchical:
             side = int((len(self.coupling_net)-num_glob)**5+num_glob)
@@ -234,7 +239,7 @@ class NetProp():
         Limg = np.repeat(Limg[:,:,np.newaxis],repeats = 3,axis = 2)
         Limg = Limg.astype('uint8')
         plt.imshow(Limg)
-        plt.savefig('{}/LaplacianPartioning_epoch{}_image{}_{}'.format(save_dir,epoch,image_num,trial_type))
+        plt.savefig('{}/{}/LaplacianPartioning_epoch{}_image{}_{}.png'.format(exp_name,save_dir,epoch,image_num,trial_type))
         frame = plt.gca()
         frame.axes.get_xaxis().set_visible(False)
         frame.axes.get_yaxis().set_visible(False)
@@ -244,7 +249,7 @@ class NetProp():
         plt.ylabel('Eigenvalue')
         plt.title('Eigenvalues')
         plt.xticks(range(side**2))
-        plt.savefig('{}/LaplacianEigenvalues_epoch{}_image{}_{}'.format(save_dir,epoch,image_num,trial_type))
+        plt.savefig('{}/{}/LaplacianEigenvalues_epoch{}_image{}_{}.png'.format(exp_name,save_dir,epoch,image_num,trial_type))
         plt.close()
         
             
