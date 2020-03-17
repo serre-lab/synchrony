@@ -33,9 +33,12 @@ class NetProp():
         else:
             
             self.img_side_squared = coupling_net.shape[1]
-            self.num_cn = connectivity.shape[2]
-            self.coupling_net = coupling_net[0,:].unsqueeze(0).cpu().data.numpy()#selecting just first couplin in batch
-            self.connectivity = connectivity[0,:].unsqueeze(0).cpu().data.numpy()
+            self.num_cn = connectivity.shape[1]
+            #self.num_cn = connectivity.shape[2] #when one image is off
+            self.coupling_net = coupling_net[0,:].unsqueeze(0).cpu().data.numpy()
+
+            self.connectivity = connectivity.unsqueeze(0).cpu().data.numpy()
+            #self.connectivity = connectivity[0,:].unsqueeze(0).cpu().data.numpy() #when image_one is off
         if usenx:
             G = self.convert_to_G()
             self.G = G
@@ -47,17 +50,18 @@ class NetProp():
 
             if self.hierarchical:
                 #need to loop through the connectivity matrix instead of img_side_swared
-                #import pdb;pdb.set_trace()
+
                 for i in range(self.connectivity_low.shape[1]):
                     for j in range(self.connectivity_low.shape[2]):
                         actual_coupling[self.connectivity_low[0,i,j],i] = self.coupling_net[0,i,self.connectivity_low[0,i,j]]
-                #import pdb;pdb.set_trace()
+
                 for i in range(self.connectivity_high.shape[1]):
                     for j in range(self.connectivity_high.shape[2]):
                         actual_coupling[self.connectivity_high[0,i,j],i+self.connectivity_low.shape[1]-1] = self.coupling_net[0,(i+self.connectivity_low.shape[1]-1),self.connectivity_high[0,i,j]]
                         
                 
             else:
+
                 for i in range(self.img_side_squared):
                     for j in range(self.num_cn):
                         actual_coupling[self.connectivity[0,i,j], i] =  self.coupling_net[0,i,self.connectivity[0,i,j]]
@@ -261,6 +265,18 @@ class NetProp():
         self.part2 = part2
         return([part1,part2]) #returns list of two lists (one for each group)
         #should it be return([part1,part2])
+        
+            
+    def largest_gap(self):
+        #val,vec = self.get_eigen()
+        val,vec = self.val,self.vec
+        sorted_val = np.sort(val)
+        diff = abs(sorted_val[:-1]-sorted_val[1:])
+        return diff
+        #plt.title('Difference, Largest:'+str(np.argmax(diff)))
+        #plt.xticks(range(self.nodes-1))
+        #plt.plot(diff)
+        
     
     
     def plot_laplacian(self,save_dir, epoch, image_num, trial_type,num_glob):
@@ -293,6 +309,14 @@ class NetProp():
         plt.xticks(range(side**2))
         plt.savefig('{}/LaplacianEigenvalues_epoch{}_image{}_{}.png'.format(save_dir,epoch,image_num,trial_type))
         plt.close()
+        
+        diff = self.largest_gap()
+        plt.title('Difference, Largest:'+str(np.argmax(diff)))
+        plt.xticks(range(self.nodes-1))
+        plt.plot(diff)
+        plt.savefig('{}/LaplacianLargestGap_epoch{}_image{}_{}.png'.format(save_dir,epoch,image_num,trial_type))
+
+        
         
             
         

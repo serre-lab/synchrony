@@ -199,9 +199,9 @@ for epoch in range(args.train_epochs):
                 ex_image = torch.tensor(train_data[0, 0, ...]).to(args.device).float()
                 #ex_mask = torch.tensor(train_data[0, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
                 if args.num_global_control > 0:
-                    ex_connectivity = [connectivity[0][0:1,:],connectivity[1][0:1,:]]
+                    ex_connectivity = [connectivity[0],connectivity[1]]
                 else:
-                    ex_connectivity = connectivity[0:1,:]
+                    ex_connectivity = connectivity
         
         tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
         tavg_loss = tavg_loss.mean() / norm
