@@ -77,6 +77,7 @@ parser.add_argument('--classify',type=bool,default=False)
 args = parser.parse_args()
 args.kernel_size = [int(k) for k in args.kernel_size.split(',')]
 
+
 if args.interactive:
     import matplotlib.pyplot as plt
 else:
@@ -98,7 +99,7 @@ num_test = 1000
 ######################
 # path
 load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data/', args.data_name, str(args.segments))
-save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/aneri', args.exp_name)
+save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/aneri/', args.exp_name)
 model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models/', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
@@ -198,9 +199,9 @@ for epoch in range(args.train_epochs):
                 ex_image = torch.tensor(train_data[0, 0, ...]).to(args.device).float()
                 #ex_mask = torch.tensor(train_data[0, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
                 if args.num_global_control > 0:
-                    ex_connectivity = [connectivity[0][0:1,:],connectivity[1][0:1,:]]
+                    ex_connectivity = [connectivity[0],connectivity[1]]
                 else:
-                    ex_connectivity = connectivity[0:1,:]
+                    ex_connectivity = connectivity
         
         tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
         tavg_loss = tavg_loss.mean() / norm
@@ -218,13 +219,14 @@ for epoch in range(args.train_epochs):
             display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
                 'train{}_{}'.format(epoch,step), args.rf_type)
 
-        if step % 20 == 0 and False:
+        if step % 600 == 0:
             NP_initialized = False
             if args.one_image:
                 #import pdb;pdb.set_trace()
                 phase_list_train, coupling_train, omega_train = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1))
                 connectivity = ex_connectivity 
                 coupling_train = coupling_train[0:1,:]
+                np.save(save_dir+'/coupling_train_epoch'+str(epoch)+'step'+str(step),coupling_train.cpu().detach().numpy())
             
             if args.cluster == True:
                 #pass in whole coupling train and batch_connectivity and then deal with it in NP?
@@ -295,12 +297,13 @@ for epoch in range(args.train_epochs):
             'test{}_{}'.format(epoch, step), args.rf_type)
         #if step*args.batch_size > num_test:
         #    break
-        if np.logical_and(step % 20 == 0,args.one_image==False) and False:
+        if step % 600 == 0:
             NP_initialized = False
             if args.one_image:
                 phase_list_test, coupling_test, omega_test = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1))
                 connectivity = ex_connectivity
                 coupling_test = coupling_test[0:1,:]
+                np.save(save_dir+'/coupling_test_epoch'+str(epoch)+'step'+str(step),coupling_test.cpu().detach().numpy())
             
             if args.cluster == True:
                 if NP_initialized ==False:
