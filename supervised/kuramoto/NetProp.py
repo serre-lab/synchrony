@@ -64,6 +64,7 @@ class NetProp():
                     #again confirm direction of this --> was told that it is projections to pixel i
         
             self.actual_coupling=actual_coupling
+            self.nodes = len(actual_coupling)
     
         
 
@@ -209,47 +210,88 @@ class NetProp():
             self.avg_clustering = avg_clustering
             return avg_clustering
         
-    def laplacian_partition(self):
-        W = self.coupling_net
-        W = W[0,:,:]
+#     def laplacian_partition(self):
+#         W = self.coupling_net
+#         W = W[0,:,:]
         
-        Lin,Lout, Lboth = get_L(W)
+#         Lin,Lout, Lboth = get_L(W)
         
-        #using just Lboth for now
-        val, vec = LA.eig(Lboth)
-        part = vec[np.where(val==np.sort(val)[1])]
-        part1,part2 = partition(part[0])
+#         #using just Lboth for now
+#         val, vec = LA.eig(Lboth)
+#         part = vec[np.where(val==np.sort(val)[1])]
+#         part1,part2 = partition(part[0])
+#         self.val = val
+#         self.vec = vec
+#         self.partition = [part1,part2]
+#         return partition([part1,part2]) #returns list of two lists (one for each group)
+    
+    
+    def partition(self,part):
+        part1 = []
+        part2 = []
+        for i in range(self.nodes):
+            if part[i]>0: 
+                part1.append(i)
+            else:
+                part2.append(i)
+        return([part1,part2])
+
+    def get_eigen(self): # modified from laplacian partition from Netprop.py
+          #using just Lboth for now
+            
+        Lin,Lout, Lboth = get_L(self.actual_coupling)
+        val, vec = LA.eig(Lin) #Lboth in Netprop.py
+        #print(Lin)
         self.val = val
         self.vec = vec
-        self.partition = [part1,part2]
-        return partition([part1,part2]) #returns list of two lists (one for each group)
+        return val,vec
+
+    def laplacian_partition(self): #adapted from Netprop.py
+        val,vec = self.get_eigen()
+        #if np.logical_and(np.sort(val)[0]==0,np.sort(val)[1]>0):
+        #    part = vec[np.where(val==np.sort(val)[1])]
+        #else:
+        #    part = vec[np.min(np.where(np.sort(val)>0))]
+        sorted_vec = vec[:,np.argsort(val)]
+        #part = sorted_vec[:,0]
+        part = sorted_vec[:,np.min(np.where(np.sort(val)>0))]
+        #print(len(part))
+        part1,part2 = self.partition(part)
+        self.part1 = part1
+        self.part2 = part2
+        return([part1,part2]) #returns list of two lists (one for each group)
+        #should it be return([part1,part2])
     
-    def plot_laplacian(self,exp_name,save_dir, epoch, image_num, trial_type,num_glob):
+    
+    def plot_laplacian(self,save_dir, epoch, image_num, trial_type,num_glob):
         parts = self.laplacian_partition()
         if self.hierarchical:
-            side = int((len(self.coupling_net)-num_glob)**5+num_glob)
+            side = int((len(self.coupling_net[0])-num_glob)**0.5+num_glob)
         else:
-            side = int(len(self.coupling_net)**0.5)
+            side = int(len(self.coupling_net[0])**0.5)
         Limg = np.zeros(shape = side**2)
         for p in parts[0]:
             Limg[p] = 0
         for p in parts[1]:
             Limg[p] = 255
-        Limg = np.reshape(Limg,(side,side))
+ 
+        Limg = Limg.reshape((side,side))
         Limg = np.repeat(Limg[:,:,np.newaxis],repeats = 3,axis = 2)
         Limg = Limg.astype('uint8')
         plt.imshow(Limg)
-        plt.savefig('{}/{}/LaplacianPartioning_epoch{}_image{}_{}.png'.format(exp_name,save_dir,epoch,image_num,trial_type))
+    
         frame = plt.gca()
         frame.axes.get_xaxis().set_visible(False)
         frame.axes.get_yaxis().set_visible(False)
+        plt.savefig('{}/LaplacianPartioning_epoch{}_image{}_{}.png'.format(save_dir,epoch,image_num,trial_type))
+    
         plt.title('Paritions')
         plt.close()
         plt.plot(np.sort(self.val))
         plt.ylabel('Eigenvalue')
         plt.title('Eigenvalues')
         plt.xticks(range(side**2))
-        plt.savefig('{}/{}/LaplacianEigenvalues_epoch{}_image{}_{}.png'.format(exp_name,save_dir,epoch,image_num,trial_type))
+        plt.savefig('{}/LaplacianEigenvalues_epoch{}_image{}_{}.png'.format(save_dir,epoch,image_num,trial_type))
         plt.close()
         
             
@@ -280,15 +322,15 @@ def phase_coherence(phases):
 
 #def for laplacian, sources - to be added 
 
-def partition(part):
-    part1 = []
-    part2 = []
-    for i in range(len(part)):
-        if part[i]>0: 
-            part1.append(i)
-        else:
-            part2.append(i)
-    return([part1,part2])
+# def partition(part):
+#     part1 = []
+#     part2 = []
+#     for i in range(len(part)):
+#         if part[i]>0: 
+#             part1.append(i)
+#         else:
+#             part2.append(i)
+#     return([part1,part2])
 
 def get_D(W,A):
     D = []

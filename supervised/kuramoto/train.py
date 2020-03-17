@@ -240,7 +240,7 @@ for epoch in range(args.train_epochs):
                 if NP_initialized==False:
                     NP = NetProp(coupling_train,connectivity, args.num_global_control>0)
                     NP_initialized = True
-                NP.plot_laplacian(args.exp_name,save_dir,epoch,step,'train',args.num_global_control)
+                NP.plot_laplacian(save_dir,epoch,step,'train',args.num_global_control)
                 
             if np.logical_and(cont_epoch==True,args.path_length == True):
                 if NP_initialized==False:
@@ -314,7 +314,7 @@ for epoch in range(args.train_epochs):
                 if NP_initialized ==False:
                     NP = NetProp(coupling_test,connectivity,args.num_global_control>0)
                     NP_initialized = True
-                NP.plot_laplacian(args.exp_name,save_dir,epoch,step,'val',args.num_global_control)
+                NP.plot_laplacian(save_dir,epoch,step,'val',args.num_global_control)
             
             if np.logical_and(cont_epoch==True,args.path_length == True):
                 if NP_initialized==False:
