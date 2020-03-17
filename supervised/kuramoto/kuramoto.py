@@ -112,7 +112,6 @@ class Kuramoto(object):
         return phase
 
     def evolution(self, coupling, batch=None, hierarchical=False):
-    
         b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0] 
         dv = coupling[0].device if self.gN > 0 else coupling.device
         phase = self.phase_0(b)
@@ -141,7 +140,8 @@ class Kuramoto(object):
             coupling = torch.zeros(phase.shape[0], phase.shape[1], phase.shape[1]).to(dv).scatter_(dim=2,index=batch_lconnectivity, src=coupling)
 
         for i in range(self.time_steps):
-            new = self.update(phase.to(dv), coupling, omega.to(dv))
+            new = self.update(phase_list[-1].to(dv), coupling, omega.to(dv))
+            ipdb.set_trace()
             self.eps_anneal(i)
             phase_list.append(new)
         try:

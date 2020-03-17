@@ -1,6 +1,6 @@
 import os, subprocess
-import nest_asyncio
-nest_asyncio.apply()
+#import nest_asyncio
+#nest_asyncio.apply()
 import nets
 import time
 import argparse
