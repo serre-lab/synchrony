@@ -264,8 +264,8 @@ for epoch in range(args.train_epochs):
         PL_train.append(-1)
             
     if step > 0:
-        loss_history.append(l / step)
-        sbd_history.append(sbd / (step * args.batch_size / float(args.show_every)))
+        loss_history.append(l / (step+1))
+        sbd_history.append(sbd / ((1+ (step // args.show_every)) * args.batch_size))
     l=0
     sbd = 0
     PL_epoch = []
@@ -336,8 +336,8 @@ for epoch in range(args.train_epochs):
         PL_val.append(np.mean(np.array(PL_epoch)))
     elif args.path_length==True: 
         PL_val.append(-1)
-    loss_history_test.append(l /step)
-    sbd_history_test.append(sbd / (step * args.batch_size))
+    loss_history_test.append(l / (step+1))
+    sbd_history_test.append(sbd / ((step+1) * args.batch_size))
 
     # save file s
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
