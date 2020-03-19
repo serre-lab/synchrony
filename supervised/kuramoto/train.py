@@ -183,6 +183,7 @@ for epoch in range(args.train_epochs):
     cont_epoch = True
     PL_epoch = []
     clustering_epoch = []
+
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
@@ -270,6 +271,8 @@ for epoch in range(args.train_epochs):
     sbd = 0
     PL_epoch = []
     clustering_epoch = []
+
+    # Testing
     for step, (test_data, _) in tqdm(enumerate(testing_loader)):
         # cross-validation
         batch = test_data[:,  0, ...].float().to(args.device)
