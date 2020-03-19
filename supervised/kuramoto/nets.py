@@ -337,13 +337,14 @@ class simple_conv(KuraNet):
 
 
 class criterion(nn.Module):
-    def __init__(self, degree, in_size, device='cpu', classify=False):
+    def __init__(self, degree, in_size, device='cpu', classify=False, recurrent_classifier=False):
         super(criterion, self).__init__()
         self.classify = classify
         if self.classify: 
-            self.classifier = read_out(in_size).to(device)
+            self.classifier = read_out(in_size, recurrent=recurrent_classifier).to(device)
             self.classifier_loss = torch.nn.BCEWithLogitsLoss()
         self.device = device
+        self.recurrent_classifier = recurrent_classifier
         self.degree = degree
 
     def forward(self, phase_list, mask, transform, valid=False, targets=None):
@@ -364,9 +365,12 @@ class criterion(nn.Module):
             return torch.matmul(losses,
                             torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
         else:
-            losses = 0
-            for p, phase in enumerate(phase_list):
-                losses += self.classifier_loss(self.classifier.forward(phase), targets) * (p+1)**self.degree
+            if self.recurrent_classifier is True:
+                loss = self.classifier_loss(self.classifier.forward(torch.stack(phase_list)))
+            else:
+                losses = 0
+                for p, phase in enumerate(phase_list):
+                    losses += self.classifier_loss(self.classifier.forward(phase), targets) * (p+1)**self.degree
             return losses
 
 
@@ -516,17 +520,20 @@ class autoencoder(nn.Module):
             return x.reshape(x.shape[0], -1)
 
 class read_out(nn.Module):
-    def __init__(self,in_size):
+    def __init__(self,in_size, recurrent=False):
         super(read_out, self).__init__()
+        modules = [torch.nn.Linear(in_size, 256),
+                                    nn.Tanh()]
 
-        self.layers = nn.Sequential(torch.nn.Linear(in_size, 256),
-                                    nn.Tanh(),
-                                    torch.nn.Linear(256,2))
+        modules = modules + [torch.nn.GRU(256,2)] if recurrent else modules + [torch.nn.Linear(256,2)]
+        self.layers = nn.Sequential(*modules)
+
     def forward(self,phase):
         real = torch.cos(phase)
         imag = torch.sin(phase)
         cplx = []
         for part in [real, imag]:
             cplx.append(self.layers(part))
+        ipdb.set_trace()
         return torch.sqrt(cplx[0]**2 + cplx[1]**2)
         

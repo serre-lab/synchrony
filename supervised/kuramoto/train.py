@@ -12,6 +12,7 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 import display as disp
 import sys
+from distutils.util import strtobool
 from losses import calc_sbd
 from utils import *
 import ipdb
@@ -28,7 +29,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--data_name', type=str, default='composite_textures_mini')
 parser.add_argument('--exp_name', type=str, default='four_texture_segment')
 parser.add_argument('--device', type=str, default='cpu')
-parser.add_argument('--interactive', type=str, default=False)
+parser.add_argument('--interactive', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--show_every', type=int,default=50)
 # Model parameters
 parser.add_argument('--model_name', type=str, default='simple_conv')
@@ -45,19 +46,19 @@ parser.add_argument('--rf_type', type=str, default='arange')
 parser.add_argument('--phase_initialization', type=str, default='random')
 parser.add_argument('--intrinsic_frequencies', type=str, default='zero')
 parser.add_argument('--update_rate', type=float, default=1.6)
-parser.add_argument('--sw', type=bool, default=False)
+parser.add_argument('--sw', type=lambda x:bool(strtobool(x)),default=False)
 parser.add_argument('--time_steps', type=int, default=8)
 parser.add_argument('--record_steps', type=int, default=8)
 parser.add_argument('--walk_step', type=float, default=.1)
 
 #graph stats
-parser.add_argument('--graph_stats', type=bool, default=False)
-parser.add_argument('--path_length', type=bool, default=False)
-parser.add_argument('--cluster', type = bool, default = False)
-parser.add_argument('--laplacian',type = bool, default = False)
-parser.add_argument('--glob_order_parameter', type = bool, default = False)
-parser.add_argument('--bassett', type = bool, default = False)
-parser.add_argument('--one_image', type = bool, default = False)
+parser.add_argument('--graph_stats', type=lambda x:bool(strtobool(x)), default=False)
+parser.add_argument('--path_length', type=lambda x:bool(strtobool(x)), default=False)
+parser.add_argument('--cluster',  type=lambda x:bool(strtobool(x)), default = False)
+parser.add_argument('--laplacian', type=lambda x:bool(strtobool(x)), default = False)
+parser.add_argument('--glob_order_parameter', type=lambda x:bool(strtobool(x)), default = False)
+parser.add_argument('--bassett', type=lambda x:bool(strtobool(x)), default = False)
+parser.add_argument('--one_image', type=lambda x:bool(strtobool(x)), default = False)
 # Data parameters
 parser.add_argument('--img_side', type=int, default=32)
 parser.add_argument('--segments', type=int, default=4)
@@ -72,7 +73,8 @@ parser.add_argument('--sparsity_weight', type=float, default=1e-5)
 
 # loss parameters
 parser.add_argument('--transform', type=str, default='linear')
-parser.add_argument('--classify',type=bool,default=False)
+parser.add_argument('--classify',type=lambda x:bool(strtobool(x)), default=False)
+parser.add_argument('--recurrent_classifier',type=lambda x:bool(strtobool(x)), default=False)
 
 args = parser.parse_args()
 args.kernel_size = [int(k) for k in args.kernel_size.split(',')]
@@ -99,7 +101,7 @@ num_test = 1000
 ######################
 # path
 load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data/', args.data_name, str(args.segments))
-save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/aneri/', args.exp_name)
+save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/', args.exp_name)
 model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models/', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
@@ -138,12 +140,12 @@ else:
 if torch.cuda.device_count() > 1 and args.device=='cuda':
     model = nn.DataParallel(nets.load_net(args, connectivity, args.num_global_control)).to(args.device)
     freq_params = model.module.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
-    criterion = nn.DataParallel(nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, device=args.device)).to(args.device)
+    criterion = nn.DataParallel(nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device)).to(args.device)
     classifier_params = criterion.module.classifier.parameters() if args.classify is True else []
 else:
     model = nets.load_net(args, connectivity, args.num_global_control).to(args.device)
     freq_params = model.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
-    criterion = nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, device=args.device).to(args.device)
+    criterion = nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device).to(args.device)
     classifier_params = criterion.classifier.parameters() if args.classify is True else []
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
 

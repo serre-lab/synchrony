@@ -345,7 +345,7 @@ class displayer(object):
             self.phases = np.squeeze(np.array(phases, dtype=np.float32))
         else:
             self.phases = None
-        #self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
+        self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
         return True
 
     def set_freqs(self, freqs=None):

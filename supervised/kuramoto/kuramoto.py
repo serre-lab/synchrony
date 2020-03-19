@@ -103,7 +103,7 @@ class Kuramoto(object):
     
     def _update3(self, phase, coupling, omega):
         # efficient, much less memory usage
-        n = coupling.shape[2]
+        n = torch.abs(torch.sign(coupling)).sum(2)
  
         self.delta = self.eps * \
                      (torch.bmm(coupling, torch.sin(phase).unsqueeze(2).float()).squeeze(2) * torch.cos(phase) -
@@ -141,7 +141,6 @@ class Kuramoto(object):
 
         for i in range(self.time_steps):
             new = self.update(phase_list[-1].to(dv), coupling, omega.to(dv))
-            ipdb.set_trace()
             self.eps_anneal(i)
             phase_list.append(new)
         try:
