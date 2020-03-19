@@ -366,7 +366,11 @@ for epoch in range(args.train_epochs):
     np.save(os.path.join(save_dir, 'valid_loss.npy'), np.array(loss_history_test))
     np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_history))
     np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_history_test))
-
+   
+    ipdb.set_trace() 
+    sbd_diff = np.abs(np.diff(sbd_history_test[-5:])).mean()
+    if args.early_stopping and sbd_history_test[-1] > .98 or sbd_diff < .05:
+        break
 
     if args.path_length == True:
         plt.plot(np.array(PL_train))
