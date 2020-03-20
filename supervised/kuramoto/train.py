@@ -183,6 +183,7 @@ for epoch in range(args.train_epochs):
     cont_epoch = True
     PL_epoch = []
     clustering_epoch = []
+
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
@@ -273,6 +274,8 @@ for epoch in range(args.train_epochs):
     sbd = 0
     PL_epoch = []
     clustering_epoch = []
+
+    # Testing
     for step, (test_data, _) in tqdm(enumerate(testing_loader)):
         # cross-validation
         batch = test_data[:,  0, ...].float().to(args.device)
@@ -369,7 +372,11 @@ for epoch in range(args.train_epochs):
     np.save(os.path.join(save_dir, 'valid_loss.npy'), np.array(loss_history_test))
     np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_history))
     np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_history_test))
-
+   
+    ipdb.set_trace() 
+    sbd_diff = np.abs(np.diff(sbd_history_test[-5:])).mean()
+    if args.early_stopping and sbd_history_test[-1] > .98 or sbd_diff < .05:
+        break
 
     if args.path_length == True:
         plt.plot(np.array(PL_train))

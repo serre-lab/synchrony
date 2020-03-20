@@ -508,13 +508,9 @@ class criterion(nn.Module):
             return torch.matmul(losses,
                             torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
         else:
-            if self.recurrent_classifier is True:
-                loss = self.classifier_loss(self.classifier.forward(torch.stack(phase_list)))
-            else:
-                losses = 0
-                for p, phase in enumerate(phase_list):
-                    losses += self.classifier_loss(self.classifier.forward(phase), targets) * (p+1)**self.degree
-            return losses
+            out = self.classifier.forward(torch.stack(phase_list))
+            loss = torch.stack([self.classifier_loss(out[p], targets)*(p+1)**self.degree for p in range(out.shape[0])]).sum(0)
+            return loss
 
 
 class regularizer(nn.Module):
@@ -665,6 +661,7 @@ class autoencoder(nn.Module):
 class read_out(nn.Module):
     def __init__(self,in_size, recurrent=False):
         super(read_out, self).__init__()
+        self.recurrent = recurrent
         modules = [torch.nn.Linear(in_size, 256),
                                     nn.Tanh()]
 
@@ -675,8 +672,15 @@ class read_out(nn.Module):
         real = torch.cos(phase)
         imag = torch.sin(phase)
         cplx = []
-        for part in [real, imag]:
-            cplx.append(self.layers(part))
         ipdb.set_trace()
+        for part in [real, imag]:
+            if self.recurrent:  
+                o, h = self.layers(part)
+                cplx.append(o)
+            else:
+                out = []
+                for t in range(len(phase)):
+                    out.append(self.layers(phase[t]))
+                cplx.append(torch.stack(out))
         return torch.sqrt(cplx[0]**2 + cplx[1]**2)
         
