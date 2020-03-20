@@ -111,12 +111,13 @@ class Kuramoto(object):
         phase = phase + self.delta + omega
         return phase
 
-    def evolution(self, coupling, batch=None, hierarchical=False):
+    def evolution(self, coupling, omega=None, batch=None, hierarchical=False):
         b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0] 
         dv = coupling[0].device if self.gN > 0 else coupling.device
         phase = self.phase_0(b)
         self.eps = self.update_rate
-        omega = self.omega(batch,b)
+        if omega is None:
+            omega = self.omega(batch,b)
         phase_list = [phase.to(dv)]
         if hierarchical:
             batch_lconnectivity = self.connectivity0[0].unsqueeze(0).repeat(coupling[0].shape[0],1,1).to(dv)

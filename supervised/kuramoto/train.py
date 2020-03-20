@@ -207,7 +207,10 @@ for epoch in range(args.train_epochs):
         
         tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
         tavg_loss = tavg_loss.mean() / norm
-        tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
+        if coupling_train is not None:
+            tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
+        if omega_train is not None:
+            tavg_loss += args.sparsity_weight * torch.abs(omega_train).mean()
         l+=tavg_loss.data.cpu().numpy()
         tavg_loss.backward()
         op.step()
@@ -289,7 +292,10 @@ for epoch in range(args.train_epochs):
 
         tavg_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
         tavg_loss_test = tavg_loss_test.mean() / norm
-        tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
+        if coupling_test is not None:
+            tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
+        if omega_test is not None:
+            tavg_loss_test += args.sparsity_weight * torch.abs(omega_test).mean()
         l+=tavg_loss_test.data.cpu().numpy()
 		
         if step % args.show_every == 0:

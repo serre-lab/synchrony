@@ -342,7 +342,7 @@ class displayer(object):
 
     def set_phases(self, phases=None):
         if phases is not None:
-            self.phases = np.squeeze(np.array(phases, dtype=np.float32))
+            self.phases = np.array(phases, dtype=np.float32)#np.squeeze(np.array(phases, dtype=np.float32))
         else:
             self.phases = None
         self.phases = (self.phases % (2 * np.pi) + 2 * np.pi) % (2 * np.pi)
@@ -447,17 +447,22 @@ class displayer(object):
         plt.close()
 
 
-    def static_evol2(self, nrows, ncols, input, save_name, mask):
+    def static_evol2(self, clustered_last_phase, nrows, ncols, input, save_name, mask):
         # This is for phases which have less than 5 steps
-        fig, axes = plt.subplots(1, self.phases.shape[0] + 2)
+        fig, axes = plt.subplots(1, self.phases.shape[0] + 3)
         axes.reshape(-1)
         axes[0].imshow(np.reshape(input, (nrows, ncols)), cmap='gray')
         axes[0].axis('off')
         axes[0].title.set_text('input')
         for i in range(self.phases.shape[0]):
-            axes[i + 1].imshow(np.reshape(self.phases[i], (nrows, ncols)), cmap='hsv')
+            axes[i + 1].imshow(np.reshape(self.phases[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
             axes[i + 1].axis('off')
             axes[i + 1].title.set_text('step' + str(int(i)))
+        
+        axes[-2].imshow(np.reshape(clustered_last_phase, (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
+        axes[-2].axis('off')
+        axes[-2].title.set_text('quantized')
+
         axes[-1].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
         axes[-1].axis('off')
         axes[-1].title.set_text('mask')
