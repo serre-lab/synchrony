@@ -101,9 +101,9 @@ num_test = 1000
 
 ######################
 # path
-load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data/aneri', args.data_name, str(args.segments))
-save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/aneri', args.exp_name)
-model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models/aneri', args.exp_name)
+load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name, str(args.segments))
+save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results', args.exp_name)
+model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
 if not os.path.exists(save_dir):
