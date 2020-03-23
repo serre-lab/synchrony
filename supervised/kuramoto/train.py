@@ -59,6 +59,7 @@ parser.add_argument('--laplacian', type=lambda x:bool(strtobool(x)), default = F
 parser.add_argument('--glob_order_parameter', type=lambda x:bool(strtobool(x)), default = False)
 parser.add_argument('--bassett', type=lambda x:bool(strtobool(x)), default = False)
 parser.add_argument('--one_image', type=lambda x:bool(strtobool(x)), default = False)
+parser.add_argument('--multi_image', type=lambda x:bool(strtobool(x)), default = False )
 # Data parameters
 parser.add_argument('--img_side', type=int, default=32)
 parser.add_argument('--segments', type=int, default=4)
@@ -100,9 +101,9 @@ num_test = 1000
 
 ######################
 # path
-load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data/', args.data_name, str(args.segments))
-save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/', args.exp_name)
-model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models/', args.exp_name)
+load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data/aneri', args.data_name, str(args.segments))
+save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/aneri', args.exp_name)
+model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models/aneri', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
 if not os.path.exists(save_dir):
@@ -205,7 +206,15 @@ for epoch in range(args.train_epochs):
                     ex_connectivity = [connectivity[0],connectivity[1]]
                 else:
                     ex_connectivity = connectivity
-        
+        if args.multi_image:
+            if np.logical_and(epoch==0,step==0):
+                ex_batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
+                if args.num_global_control > 0:
+                    ex_connectivity = [connectivity[0],connectivity[1]]
+                else:
+                    ex_connectivity = connectivity
+                
+                
         tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
         tavg_loss = tavg_loss.mean() / norm
         if coupling_train is not None:
@@ -229,10 +238,18 @@ for epoch in range(args.train_epochs):
             NP_initialized = False
             if args.one_image:
                 #import pdb;pdb.set_trace()
-                phase_list_train, coupling_train, omega_train = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1))
+                phase_list_train, coupling_train, omega_train = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1)) #was getting error with 
+                #one not matching the original batch size
                 connectivity = ex_connectivity 
                 coupling_train = coupling_train[0:1,:]
                 np.save(save_dir+'/coupling_train_epoch'+str(epoch)+'step'+str(step),coupling_train.cpu().detach().numpy())
+            
+            if args.multi_image:
+                phase_list_train, coupling_train, omega_train = model(batch.unsqueeze(1))
+                connectivity = ex_connectivity 
+                np.save(save_dir+'/multi_coupling_train_epoch'+str(epoch)+'step'+str(step),coupling_train.cpu().detach().numpy())
+
+                
             
             if args.cluster == True:
                 #pass in whole coupling train and batch_connectivity and then deal with it in NP?
@@ -315,7 +332,12 @@ for epoch in range(args.train_epochs):
                 connectivity = ex_connectivity
                 coupling_test = coupling_test[0:1,:]
                 np.save(save_dir+'/coupling_test_epoch'+str(epoch)+'step'+str(step),coupling_test.cpu().detach().numpy())
-            
+
+            if args.multi_image:
+                phase_list_train, coupling_train, omega_train = model(batch.unsqueeze(1))
+                connectivity = ex_connectivity
+                np.save(save_dir+'/multi_coupling_test_epoch'+str(epoch)+'step'+str(step),coupling_train.cpu().detach().numpy())
+
             if args.cluster == True:
                 if NP_initialized ==False:
                     NP = NetProp(coupling_test,connectivity,args.num_global_control>0)
