@@ -127,7 +127,7 @@ class polyomino_scenes(object):
 
 
 def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, data_kind='train',
-             save_dir='/media/data_cifs/yuwei/osci_save/data/polyominoes_new', display=False):
+             save_dir='/media/data_cifs/yuwei/osci_save/data/polyominoes_new', display=False, scale=1.5):
     rot_string = 'fixed' if not rotation else 'free'
     size_string = 'large' if img_side >= 32 else 'small'
     # Specify save dir
@@ -210,7 +210,7 @@ def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, da
                 masks += [mask]
             masks.append(1 - canvas)  # the background is the final group
             # masks += [np.zeros_like(canvas) for _ in range(max_masks - len(masks))]
-            canvas, masks = upscale(canvas, np.array(masks).reshape(len(masks), -1), 2)
+            canvas, masks = upscale(canvas, np.array(masks).reshape(len(masks), -1), scale)
             data = np.concatenate([np.expand_dims(canvas, axis=0), masks], axis=0)
             fp = file_paths[num_groups]
             if display:
@@ -227,7 +227,7 @@ def upscale(image, mask, scale):
     # mask.shape=(group, img_side ** 2)
     # pass in one image at one time
     old_size = image.shape[-1]
-    new_size = old_size * scale
+    new_size = int(old_size * scale)
 
     image = image.reshape(-1)
 
@@ -251,16 +251,16 @@ def upscale(image, mask, scale):
 
 
 if __name__ == '__main__':
-    ns = [4]
-    num_objects = [3]
+    ns = [4,5,6,7,8]
+    num_objects = [4]
     num_imgs = 40000
-    rotations = [True]
+    rotations = [True, False]
     data_kind = ['train', 'test']
-    img_side = 16
+    img_side = 18
     display = True
     for n in ns:
         for o in num_objects:
             for r in rotations:
                 for d in data_kind:
                     print('Generating images: {}-ominoes, {} objects, {} rotations, {} set'.format(n, o, r, d))
-                    generate(img_side=img_side, num_imgs=num_imgs, n=n, num_objects=o, rotation=r, data_kind=d, display=display)
+                    generate(img_side=img_side, num_imgs=num_imgs, n=n, num_objects=o, rotation=r, data_kind=d, display=display, scale=2)

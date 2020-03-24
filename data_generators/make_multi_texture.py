@@ -13,20 +13,28 @@ def rand_crop(img, side=256):
     crop_corner = [np.random.randint(dim - side) for dim in sz]
     return img[crop_corner[0]:crop_corner[0] + side, crop_corner[1]:crop_corner[1] + side, :]
 
-def generate(number, data_kind='train', img_side=256, texture_number=4, gray=True, display=False, save_dir='/media/data_cifs/yuwei/osci_save/data/composite_textures_mini'):
+def generate(number, data_kind='train', img_side=256, texture_number=4, gray=True, display=False, save_dir='/media/data_cifs/yuwei/osci_save/data/composite_textures'):
     data_dir = os.path.join(os.path.expanduser('~'), 'data', 'dtd', 'images')
     save_dir = os.path.join(save_dir, str(texture_number), data_kind, '0')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+    # Texture classes 
     text_type = os.listdir(os.path.join(data_dir))
+
+    # For each class, how many images
     images_per_type = [len(os.listdir(os.path.join(data_dir, text_type[i]))) for i in range(len(text_type))]
     channels = 1 if gray else 3
+
     for n in tqdm(range(number)):
+        # Get texture classs for each segment
         rand_type_ind = np.random.randint(0,len(text_type), size=texture_number)
         rand_type_name = [text_type[i] for i in rand_type_ind]
+
+        # Get images for each segment
         img_names = [os.listdir(os.path.join(data_dir, name))[np.random.randint(images_per_type[i])] for (name, i) in zip(rand_type_name, rand_type_ind)]
         imgs = [np.asarray(Image.open(os.path.join(data_dir, type_name, file_name))) for (type_name, file_name) in zip(rand_type_name, img_names)]
         imgs = [rand_crop(img,side=img_side) for img in imgs]
+
         # Voronoi mask for image
         yy = np.linspace(0,img_side-1, img_side).astype(int)
         xx = np.linspace(0,img_side-1, img_side).astype(int)
@@ -48,9 +56,9 @@ def generate(number, data_kind='train', img_side=256, texture_number=4, gray=Tru
         file_name = os.path.join(save_dir, 'img_%04d.npy' % n)
         np.save(file_name, img_and_mask)
 if __name__=='__main__':
-    num_textures = [2,3,4,5]
+    num_textures = [6, 7, 8, 9, 10]
     num_images = 10000
     for num in num_textures:
         for kind in ['train', 'test']:
             print('Generating {} texture {} images'.format(str(num), kind))
-            generate(num_images,data_kind=kind,img_side=16, texture_number=num, display=False)
+            generate(num_images,data_kind=kind,img_side=64, texture_number=num, display=False)

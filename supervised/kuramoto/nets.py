@@ -529,7 +529,6 @@ class read_out(nn.Module):
         real = torch.cos(phase)
         imag = torch.sin(phase)
         cplx = []
-        ipdb.set_trace()
         for part in [real, imag]:
             if self.recurrent:  
                 o, h = self.layers(part)
