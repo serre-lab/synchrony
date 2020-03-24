@@ -46,8 +46,10 @@ def display(displayer, phase_list, images, masks, clustered_batch, coupling, ome
     ind = np.random.randint(images.shape[0])
     image = images[ind].cpu().data.numpy()
     mask = masks[ind].cpu().unsqueeze(0).data.numpy()
-    coupling = coupling[ind].cpu().data.numpy()
-    omega = omega[ind].cpu().data.numpy()
+    if coupling is not None:
+        coupling = coupling[ind].cpu().data.numpy()
+    if omega is not None:
+        omega = omega[ind].cpu().data.numpy()
     np_phase_list = np.array([phase.cpu().data.numpy()[ind, :] for phase in phase_list])
 
     colored_mask = (np.expand_dims(np.expand_dims(np.arange(group_size), axis=0), axis=-1) * mask / group_size).sum(1)
@@ -60,7 +62,7 @@ def display(displayer, phase_list, images, masks, clustered_batch, coupling, ome
         displayer.static_evol(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
         displayer.phase_evol2(path + '/phase_' + name)
     else:
-        displayer.static_evol2(img_side, img_side, image, path + '/static_' + name, colored_mask)
+        displayer.static_evol2(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
     return True
 
 

@@ -31,6 +31,7 @@ parser.add_argument('--exp_name', type=str, default='four_texture_segment')
 parser.add_argument('--device', type=str, default='cpu')
 parser.add_argument('--interactive', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--show_every', type=int,default=50)
+parser.add_argument('--eval_interval', type=int,default=1)
 # Model parameters
 parser.add_argument('--model_name', type=str, default='simple_conv')
 parser.add_argument('--in_channels', type=int, default=1)
@@ -59,6 +60,7 @@ parser.add_argument('--laplacian', type=lambda x:bool(strtobool(x)), default = F
 parser.add_argument('--glob_order_parameter', type=lambda x:bool(strtobool(x)), default = False)
 parser.add_argument('--bassett', type=lambda x:bool(strtobool(x)), default = False)
 parser.add_argument('--one_image', type=lambda x:bool(strtobool(x)), default = False)
+parser.add_argument('--multi_image', type=lambda x:bool(strtobool(x)), default = False )
 # Data parameters
 parser.add_argument('--img_side', type=int, default=32)
 parser.add_argument('--segments', type=int, default=4)
@@ -100,9 +102,9 @@ num_test = 1000
 
 ######################
 # path
-load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data/', args.data_name, str(args.segments))
-save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results/', args.exp_name)
-model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models/', args.exp_name)
+load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name, str(args.segments))
+save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results', args.exp_name)
+model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
 if not os.path.exists(save_dir):
@@ -153,6 +155,7 @@ loss_history = []
 sbd_history=[]
 loss_history_test = []
 sbd_history_test=[]
+epoch_history_test=[]
 coupling_history = []
 
 displayer = disp.displayer(args.segments, interactive=args.interactive)
@@ -205,10 +208,21 @@ for epoch in range(args.train_epochs):
                     ex_connectivity = [connectivity[0],connectivity[1]]
                 else:
                     ex_connectivity = connectivity
-        
+        if args.multi_image:
+            if np.logical_and(epoch==0,step==0):
+                ex_batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
+                if args.num_global_control > 0:
+                    ex_connectivity = [connectivity[0],connectivity[1]]
+                else:
+                    ex_connectivity = connectivity
+                
+                
         tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
         tavg_loss = tavg_loss.mean() / norm
-        tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
+        if coupling_train is not None:
+            tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
+        if omega_train is not None:
+            tavg_loss += args.sparsity_weight * torch.abs(omega_train).mean()
         l+=tavg_loss.data.cpu().numpy()
         tavg_loss.backward()
         op.step()
@@ -226,10 +240,18 @@ for epoch in range(args.train_epochs):
             NP_initialized = False
             if args.one_image:
                 #import pdb;pdb.set_trace()
-                phase_list_train, coupling_train, omega_train = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1))
+                phase_list_train, coupling_train, omega_train = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1)) #was getting error with 
+                #one not matching the original batch size
                 connectivity = ex_connectivity 
                 coupling_train = coupling_train[0:1,:]
                 np.save(save_dir+'/coupling_train_epoch'+str(epoch)+'step'+str(step),coupling_train.cpu().detach().numpy())
+            
+            if args.multi_image:
+                phase_list_train, coupling_train, omega_train = model(batch.unsqueeze(1))
+                connectivity = ex_connectivity 
+                np.save(save_dir+'/multi_coupling_train_epoch'+str(epoch)+'step'+str(step),coupling_train.cpu().detach().numpy())
+
+                
             
             if args.cluster == True:
                 #pass in whole coupling train and batch_connectivity and then deal with it in NP?
@@ -267,80 +289,92 @@ for epoch in range(args.train_epochs):
     if step > 0:
         loss_history.append(l / (step+1))
         sbd_history.append(sbd / ((1+ (step // args.show_every)) * args.batch_size))
-    l=0
-    sbd = 0
-    PL_epoch = []
-    clustering_epoch = []
+    
+    if (epoch+1) % args.eval_interval == 0:
+        l=0
+        sbd = 0
+        PL_epoch = []
+        clustering_epoch = []
 
-    # Testing
-    for step, (test_data, _) in tqdm(enumerate(testing_loader)):
-        # cross-validation
-        batch = test_data[:,  0, ...].float().to(args.device)
-        mask = test_data[:, 1:, ...].reshape(-1, args.segments, args.img_side * args.img_side).float().to(args.device)
-        label_inds = (((mask.sum(2) > 0)*1).sum(1) == args.segments - 1)*1
-        labels = torch.zeros((args.batch_size,2)).to(args.device).scatter_(1,label_inds.unsqueeze(1),1.0)
+        # Testing
+        with torch.no_grad():
+            for step, (test_data, _) in tqdm(enumerate(testing_loader)):
+                # cross-validation
+                batch = test_data[:,  0, ...].float().to(args.device)
+                mask = test_data[:, 1:, ...].reshape(-1, args.segments, args.img_side * args.img_side).float().to(args.device)
+                label_inds = (((mask.sum(2) > 0)*1).sum(1) == args.segments - 1)*1
+                labels = torch.zeros((args.batch_size,2)).to(args.device).scatter_(1,label_inds.unsqueeze(1),1.0)
 
-        phase_list_test, coupling_test, omega_test = model(batch.unsqueeze(1))
-        
-        last_phase = phase_list_test[-1].cpu().detach().numpy()
-        colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
+                phase_list_test, coupling_test, omega_test = model(batch.unsqueeze(1))
+                
+                last_phase = phase_list_test[-1].cpu().detach().numpy()
+                colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
 
-        clustered_batch = []
-        for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-            clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
-            sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+                clustered_batch = []
+                for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
+                    clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
+                    sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
 
-        tavg_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
-        tavg_loss_test = tavg_loss_test.mean() / norm
-        tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
-        l+=tavg_loss_test.data.cpu().numpy()
-		
-        if step % args.show_every == 0:
-            # visualize validation and save
-            # validation example, save its coupling matrix
-            display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test, args.img_side, args.segments, save_dir, 
-            'test{}_{}'.format(epoch, step), args.rf_type)
-        #if step*args.batch_size > num_test:
-        #    break
-        if step % 600 == 0:
-            NP_initialized = False
-            if args.one_image:
-                phase_list_test, coupling_test, omega_test = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1))
-                connectivity = ex_connectivity
-                coupling_test = coupling_test[0:1,:]
-                np.save(save_dir+'/coupling_test_epoch'+str(epoch)+'step'+str(step),coupling_test.cpu().detach().numpy())
+                tavg_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
+                tavg_loss_test = tavg_loss_test.mean() / norm
+                if coupling_test is not None:
+                    tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
+                if omega_test is not None:
+                    tavg_loss_test += args.sparsity_weight * torch.abs(omega_test).mean()
+                l+=tavg_loss_test.data.cpu().numpy()
+                
+                if step % args.show_every == 0:
+                    # visualize validation and save
+                    # validation example, save its coupling matrix
+                    display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test, args.img_side, args.segments, save_dir, 
+                    'test{}_{}'.format(epoch, step), args.rf_type)
+                #if step*args.batch_size > num_test:
+                #    break
+                if step % 600 == 0:
+                    NP_initialized = False
+                    if args.one_image:
+                        phase_list_test, coupling_test, omega_test = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1))
+                        connectivity = ex_connectivity
+                        coupling_test = coupling_test[0:1,:]
+                        np.save(save_dir+'/coupling_test_epoch'+str(epoch)+'step'+str(step),coupling_test.cpu().detach().numpy())
+                    
+                    if args.multi_image:
+                        phase_list_train, coupling_train, omega_train = model(batch.unsqueeze(1))
+                        connectivity = ex_connectivity
+                        np.save(save_dir+'/multi_coupling_test_epoch'+str(epoch)+'step'+str(step),coupling_train.cpu().detach().numpy())
+
+                    if args.cluster == True:
+                        if NP_initialized ==False:
+                            NP = NetProp(coupling_test,connectivity,args.num_global_control>0)
+                            NP_initialized = True
+                        clustering_epoch.append(NP.cluster_coefficient())
+                    if args.laplacian == True:
+                        if NP_initialized ==False:
+                            NP = NetProp(coupling_test,connectivity,args.num_global_control>0)
+                            NP_initialized = True
+                        NP.plot_laplacian(save_dir,epoch,step,'val',args.num_global_control)
+                    
+                    if np.logical_and(cont_epoch==True,args.path_length == True):
+                        if NP_initialized==False:
+                            NP = NetProp(coupling_test,connectivity,args.num_global_control>0)
+                            NP_initialized = True
+                        this_path_length = NP.path_length()
+                        if this_path_length is None:
+                            PL_epoch = []
+                            cont_epoch = False
+                        else:
+                            PL_epoch.append(this_path_length)
+                            
             
-            if args.cluster == True:
-                if NP_initialized ==False:
-                    NP = NetProp(coupling_test,connectivity,args.num_global_control>0)
-                    NP_initialized = True
-                clustering_epoch.append(NP.cluster_coefficient())
-            if args.laplacian == True:
-                if NP_initialized ==False:
-                    NP = NetProp(coupling_test,connectivity,args.num_global_control>0)
-                    NP_initialized = True
-                NP.plot_laplacian(save_dir,epoch,step,'val',args.num_global_control)
-            
-            if np.logical_and(cont_epoch==True,args.path_length == True):
-                if NP_initialized==False:
-                    NP = NetProp(coupling_test,connectivity,args.num_global_control>0)
-                    NP_initialized = True
-                this_path_length = NP.path_length()
-                if this_path_length is None:
-                    PL_epoch = []
-                    cont_epoch = False
-                else:
-                    PL_epoch.append(this_path_length)
-                        
-        
-    if args.cluster == True:
-        clustering_val.append(np.mean(np.array(clustering_epoch))) 
-    if np.logical_and(args.path_length == True, cont_epoch == True):
-        PL_val.append(np.mean(np.array(PL_epoch)))
-    elif args.path_length==True: 
-        PL_val.append(-1)
-    loss_history_test.append(l / (step+1))
-    sbd_history_test.append(sbd / ((step+1) * args.batch_size))
+        if args.cluster == True:
+            clustering_val.append(np.mean(np.array(clustering_epoch))) 
+        if np.logical_and(args.path_length == True, cont_epoch == True):
+            PL_val.append(np.mean(np.array(PL_epoch)))
+        elif args.path_length==True: 
+            PL_val.append(-1)
+        loss_history_test.append(l / (step+1))
+        sbd_history_test.append(sbd / ((step+1) * args.batch_size))
+        epoch_history_test.append(epoch)
 
     # save file s
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
@@ -348,15 +382,15 @@ for epoch in range(args.train_epochs):
         'initial_phase': args.phase_initialization,
         'connectivity': connectivity}, model_dir + '/model{}.pt'.format(epoch))
 
-    plt.plot(np.array(loss_history))
-    plt.plot(np.array(loss_history_test))
+    plt.plot(loss_history)
+    plt.plot(epoch_history_test, loss_history_test)
     plt.title('Time Averaged Loss')
     plt.legend(['train', 'valid'])
     plt.savefig(save_dir + '/loss' + '.png')
     plt.close()
 
-    plt.plot(np.array(sbd_history))
-    plt.plot(np.array(sbd_history_test))
+    plt.plot(sbd_history)
+    plt.plot(epoch_history_test, sbd_history_test)
     plt.title('Symmetric Best Dice')
     plt.legend(['train', 'valid'])
     plt.savefig(save_dir + '/sbd' + '.png')
@@ -366,11 +400,12 @@ for epoch in range(args.train_epochs):
     np.save(os.path.join(save_dir, 'valid_loss.npy'), np.array(loss_history_test))
     np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_history))
     np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_history_test))
+    np.save(os.path.join(save_dir, 'valid_epoch.npy'), np.array(epoch_history_test))
    
-    ipdb.set_trace() 
-    sbd_diff = np.abs(np.diff(sbd_history_test[-5:])).mean()
-    if args.early_stopping and sbd_history_test[-1] > .98 or sbd_diff < .05:
-        break
+    # ipdb.set_trace() 
+    # sbd_diff = np.abs(np.diff(sbd_history_test[-5:])).mean()
+    # if args.early_stopping and sbd_history_test[-1] > .98 or sbd_diff < .05:
+    #     break
 
     if args.path_length == True:
         plt.plot(np.array(PL_train))
