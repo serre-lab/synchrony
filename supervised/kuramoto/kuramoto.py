@@ -81,8 +81,9 @@ class Kuramoto(object):
             self.omega = lambda x,b : torch.zeros((b,self.N + self.gN))
         elif initialization == 'learned':
             self.freq_net = nets.autoencoder(int(np.sqrt(self.N)), num_global_control=self.gN).to(self.device)
-            self.omega = lambda x,b : self.freq_net.forward(x).reshape(b, -1)
-        return True
+            self.omega = lambda x,b : self.freq_net.forward(x.to(self.freq_net.device())).reshape(b, -1)
+            #self.omega = lambda x,b : self.freq_net.forward(x).reshape(b, -1)
+            return True
 
     def _update1(self, coupling, omega):
         diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
