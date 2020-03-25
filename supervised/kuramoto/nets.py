@@ -390,7 +390,7 @@ class base_conv(KuraNet):
 
         omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
             
-
+         
         if self.num_global == 0:
             x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)

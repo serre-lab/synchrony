@@ -190,6 +190,7 @@ for epoch in range(args.train_epochs):
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
+        ipdb.set_trace()
         label_inds = (((mask.sum(2) > 0)*1).sum(1) == args.segments - 1)*1
         labels = torch.zeros((args.batch_size,2)).to(args.device).scatter_(1,label_inds.unsqueeze(1),1.0)
 
