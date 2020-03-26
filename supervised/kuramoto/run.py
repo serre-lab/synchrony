@@ -1,13 +1,16 @@
 import argparse
 from configparser import ConfigParser 
 import os
+import sys
 import torch
 import subprocess
 import json, ast
 import ipdb
 
+#os.environ["CUDA_VISIBLE_DEVICES"]='1,2'
+
 meta_parser = argparse.ArgumentParser()
-meta_parser.add_argument('--name', type=str, default='Multi_MNIST36')
+meta_parser.add_argument('--name', type=str, default='SAME_DIFF')
 meta_args = meta_parser.parse_args()
 
 config = ConfigParser()
@@ -32,11 +35,13 @@ if meta_args.name[-6:] == 'search':
         #os.environ["CUDA_VISIBLE_DEVICES"]=str(device_indices[v])
         arg_strings = ['--{} {}'.format(key, value) + ' ' for (key, value) in sub_args.items()] 
         process_string = 'CUDA_VISIBLE_DEVICES={}, python train.py '.format(device_indices[v])
-        for st in arg_strings: process_string += st
-        subprocess.call(process_string + '&', shell=True)    
+        for st in arg_strings:
+            process_string += st
+        subprocess.call(sys.executable+process_string + '&', shell=True)
     
 else:
     arg_strings = ['--{} {}'.format(key, value) + ' ' for (key, value) in config.items(meta_args.name)] 
-    process_string = 'python train.py '
-    for st in arg_strings: process_string += st
-    subprocess.call(process_string, shell=True)
+    process_string = ' train.py '
+    for st in arg_strings:
+        process_string += st
+    subprocess.call(sys.executable+process_string, shell=True)

@@ -64,7 +64,7 @@ parser.add_argument('--multi_image', type=lambda x:bool(strtobool(x)), default =
 # Data parameters
 parser.add_argument('--img_side', type=int, default=32)
 parser.add_argument('--segments', type=int, default=4)
-parser.add_argument('--batch_size', type=int, default=32)
+parser.add_argument('--batch_size', type=int, default=16)
 
 # Learning parameters
 parser.add_argument('--train_epochs', type=int, default=200)
@@ -102,9 +102,9 @@ num_test = 1000
 
 ######################
 # path
-load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name, str(args.segments))
-save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results', args.exp_name)
-model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models', args.exp_name)
+load_dir = os.path.join('osci_save_v1/data', args.data_name, str(args.segments))
+save_dir = os.path.join('osci_save_v1/results', args.exp_name)
+model_dir = os.path.join('mchalvid/osci_save/models', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
 if not os.path.exists(save_dir):
@@ -403,9 +403,9 @@ for epoch in range(args.train_epochs):
     np.save(os.path.join(save_dir, 'valid_epoch.npy'), np.array(epoch_history_test))
    
     # ipdb.set_trace() 
-    # sbd_diff = np.abs(np.diff(sbd_history_test[-5:])).mean()
-    # if args.early_stopping and sbd_history_test[-1] > .98 or sbd_diff < .05:
-    #     break
+    #sbd_diff = np.abs(np.diff(sbd_history_test[-5:])).mean()
+    #if args.early_stopping and sbd_history_test[-1] > .98 or sbd_diff < .05:
+    #    break
 
     if args.path_length == True:
         plt.plot(np.array(PL_train))

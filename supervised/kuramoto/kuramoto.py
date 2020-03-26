@@ -93,13 +93,13 @@ class Kuramoto(object):
         # A-B, 0, C-B
         # A-C, B-C, 0
         self.delta = self.eps * (self.in_frq + torch.sum(coupling * torch.sin(diffs), dim=2) / (self.N - 1))
-        self.phase = self.phase + self.delta + omega
+        self.phase = self.phase + self.delta + self.eps*omega
         return self.phase
 
     def _update2(self, coupling, omega):
         diffs = self.phase.unsqueeze(1) - self.phase.unsqueeze(2)
         self.delta = self.eps * (torch.sum(coupling * torch.sin(diffs).gather(2, self.connectivity), dim=2) / coupling.shape[2])
-        self.phase = self.phase + self.delta + omega
+        self.phase = self.phase + self.delta + self.eps*omega
         return self.phase
     
     def _update3(self, phase, coupling, omega):
@@ -109,7 +109,7 @@ class Kuramoto(object):
         self.delta = self.eps * \
                      (torch.bmm(coupling, torch.sin(phase).unsqueeze(2).float()).squeeze(2) * torch.cos(phase) -
                      torch.bmm(coupling, torch.cos(phase).unsqueeze(2).float()).squeeze(2) * torch.sin(phase)) / n
-        phase = phase + self.delta + omega
+        phase = phase + self.delta + self.eps*omega
         return phase
 
     def evolution(self, coupling, omega=None, batch=None, hierarchical=False):

@@ -683,4 +683,40 @@ class read_out(nn.Module):
                     out.append(self.layers(phase[t]))
                 cplx.append(torch.stack(out))
         return torch.sqrt(cplx[0]**2 + cplx[1]**2)
+
+
+class ComplexConv(nn.Module):
+    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True):
+        super(ComplexConv, self).__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.padding = padding
+
+        ## Model components
+        self.conv_re = nn.Conv2d(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
+                                 dilation=dilation, groups=groups, bias=bias)
+        self.conv_im = nn.Conv2d(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
+                                 dilation=dilation, groups=groups, bias=bias)
+
+    def forward(self, x):  # shpae of x : [batch,2,channel,axis1,axis2]
+        real = self.conv_re(x[:, 0]) - self.conv_im(x[:, 1])
+        imaginary = self.conv_re(x[:, 1]) + self.conv_im(x[:, 0])
+        output = torch.stack((real, imaginary), dim=1)
+        return output
+
+class read_out_complex(nn.Module):
+    def __init__(self,in_size,in_channel=2, out_channel=32, kernel_size=3, stride=0, padding=0, dilation=1, bias=True, recurrent=False):
+        super(read_out, self).__init__()
+        self.recurrent = recurrent
+        self.complex_cov = ComplexConv(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
+                                 dilation=dilation, bias=bias)
+        modules = [torch.nn.Linear(output_size complex_cov, 256),nn.Tanh()]
+        modules += [torch.nn.GRU(256,2) if recurrent else torch.nn.Linear(256,2)]
+        self.layers = nn.Sequential(*modules)
+
+    def forward(self,phase,input):
+        out = []
+        for t in range(len(phase)):
+            comp = self.complex_cov(torch.stack([input,phase[t]]))
+            out.append(torch.sqrt(comp[:,0].flatten()**2 + comp[:,1].flatten()**2))
+        return torch.stack(self.layers(out)))
         

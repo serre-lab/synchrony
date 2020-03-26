@@ -92,8 +92,10 @@ monominoes = [monomino]
 def rank(n):
     """Generates polyominoes of rank n recursively."""
     assert n >= 0
-    if n == 0: return []
-    if n == 1: return monominoes
+    if n == 0:
+        return []
+    if n == 1:
+        return monominoes
     return unique(concat_map(new_polys, rank(n - 1)))
 
 
@@ -127,7 +129,7 @@ class polyomino_scenes(object):
 
 
 def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, data_kind='train',
-             save_dir='/media/data_cifs/yuwei/osci_save/data/polyominoes_new', display=False):
+             save_dir='/media/data/mchalvid/osci_save_v1/data/polyominoes_new', display=False):
     rot_string = 'fixed' if not rotation else 'free'
     size_string = 'large' if img_side >= 32 else 'small'
     # Specify save dir
@@ -150,23 +152,32 @@ def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, da
         except:
             continue
     # Make file paths according to the number of groupings in an image
-    file_paths = [os.path.join(save_dir, str(n + 1)) for n in possible_group_nums]
+    file_paths = [os.path.join(save_dir, str(n+1)) for n in possible_group_nums]
     for fp in file_paths:
-        if not os.path.exists(fp):
-            os.makedirs(fp)
+        if os.path.exists(fp):
+            os.remove(fp)
+        os.makedirs(fp)
     # For each possible group size and grouping with that size
     for num_groups, groupings in enumerate(sized_groupings):
+
+        if len(list(groupings[0]))>2:
+            label_im = np.concatenate((np.ones((num_imgs,1)),np.zeros((num_imgs,1))),1)
+        else:
+            label_im = np.concatenate((np.zeros((num_imgs,1)),np.ones((num_imgs,1))),1)
+
+        fp = file_paths[num_groups]
+        np.save(os.path.join(fp, 'labels_one_hot.npy'), label_im)
 
         # Generate `num_imgs` images
         for i in tqdm(range(num_imgs)):
 
             # Index of the individual polyomino types for given n
             inds = list(range(generator.num_n_ominoes))
-            masks = []  # where maasks are stored
+            masks = []  # where masks are stored
             bgrnd = np.zeros((img_side, img_side))  # image background
             canvas = bgrnd.copy()
 
-            # Select this image's particular grouping from among the available grou[pings with this size
+            # Select this image's particular grouping from among the available groupings with this size
             grouping = groupings[np.random.randint(len(groupings))]
 
             # For each group
@@ -214,11 +225,12 @@ def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, da
             data = np.concatenate([np.expand_dims(canvas, axis=0), masks], axis=0)
             fp = file_paths[num_groups]
             if display:
-                fig, axes = plt.subplots(1, data.shape[0])
-                for a, ax in enumerate(axes):
-                    ax.imshow(data[a])
-                plt.savefig(os.path.join(fp, 'img_%4d.png' % i))
-                plt.close()
+                if i % 1000 == 0:
+                    fig, axes = plt.subplots(1, data.shape[0])
+                    for a, ax in enumerate(axes):
+                        ax.imshow(data[a],cmap='gray')
+                    plt.savefig(os.path.join(fp, 'img_%4d.png' % i))
+                    plt.close()
             np.save(os.path.join(fp, 'img_%04d.npy' % i), data)
 
 
@@ -251,12 +263,12 @@ def upscale(image, mask, scale):
 
 
 if __name__ == '__main__':
-    ns = [4]
-    num_objects = [3]
-    num_imgs = 40000
-    rotations = [True]
-    data_kind = ['train', 'test']
-    img_side = 16
+    ns = [5]
+    num_objects = [2]
+    num_imgs = 10000
+    rotations = [False]
+    data_kind = ['train','test']
+    img_side = 32
     display = True
     for n in ns:
         for o in num_objects:
