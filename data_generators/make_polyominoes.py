@@ -160,14 +160,6 @@ def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, da
     # For each possible group size and grouping with that size
     for num_groups, groupings in enumerate(sized_groupings):
 
-        if len(list(groupings[0]))>2:
-            label_im = np.concatenate((np.ones((num_imgs,1)),np.zeros((num_imgs,1))),1)
-        else:
-            label_im = np.concatenate((np.zeros((num_imgs,1)),np.ones((num_imgs,1))),1)
-
-        fp = file_paths[num_groups]
-        np.save(os.path.join(fp, 'labels_one_hot.npy'), label_im)
-
         # Generate `num_imgs` images
         for i in tqdm(range(num_imgs)):
 
@@ -222,7 +214,12 @@ def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, da
             masks.append(1 - canvas)  # the background is the final group
             # masks += [np.zeros_like(canvas) for _ in range(max_masks - len(masks))]
             canvas, masks = upscale(canvas, np.array(masks).reshape(len(masks), -1), 2)
-            data = np.concatenate([np.expand_dims(canvas, axis=0), masks], axis=0)
+            if len(list(*groupings)) == 1:
+                label = np.ones(canvas.shape)
+            else:
+                label = np.zeros(canvas.shape)
+            print(list(*groupings))
+            data = np.concatenate([np.expand_dims(canvas, axis=0), masks,np.expand_dims(label, axis=0)], axis=0)
             fp = file_paths[num_groups]
             if display:
                 if i % 1000 == 0:

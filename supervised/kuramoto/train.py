@@ -101,6 +101,11 @@ else:
 num_test = 1000
 
 ######################
+def is_valid(path):
+    if path[:3]=='img':
+        return True
+    else:
+        return False
 # path
 load_dir = os.path.join('osci_save_v1/data', args.data_name, str(args.segments))
 save_dir = os.path.join('osci_save_v1/results', args.exp_name)
@@ -116,12 +121,14 @@ subprocess.call('rm -rf {}'.format(os.path.join(save_dir, '*')), shell=True)
 ######################
 # Load data
 #training set
-training_set = datasets.DatasetFolder(train_path, np.load, extensions=('npy',))
+training_set = datasets.DatasetFolder(train_path, np.load, extensions=('npy',),is_valid_file=is_valid)
 training_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=True, drop_last=True)
 # testing set
 testing_set = datasets.DatasetFolder(test_path, np.load, extensions=('npy',))
 testing_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=True,
 	drop_last=True)
+#Labels for SD task
+labels = np.load(os.path.join(train_path,'polyominoes_new/5/2/fixed/large/train/2/label/labels_one_hot.npy'))
 
 #####################
 # Connectivity
