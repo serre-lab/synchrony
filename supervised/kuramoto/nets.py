@@ -396,7 +396,6 @@ class base_conv(KuraNet):
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
 
             x = x / x.norm(p=2, dim=2).unsqueeze(2)
-
             phase_list, coupling, omega = self.evolution(x, omega=omega, batch=x_in, hierarchical=False)
             return phase_list, coupling, omega
         else:
@@ -480,11 +479,16 @@ class base_noKura_conv(nn.Module):
             self.weights_init(m)
 
 class criterion(nn.Module):
-    def __init__(self, degree, in_size, device='cpu', classify=False, recurrent_classifier=False):
+    def __init__(self, degree, in_size, device='cpu', classify=False, recurrent_classifier=False, read_out_type='2'):
         super(criterion, self).__init__()
         self.classify = classify
-        if self.classify: 
-            self.classifier = read_out(in_size, recurrent=recurrent_classifier).to(device)
+        if self.classify:
+            if read_out_type == 'complex':
+                self.classifier = ComplexConv(1, 16, 3).to(device)
+            elif read_out_type == '2':
+                self.classifier = read_out2(in_size, recurrent=recurrent_classifier).to(device)
+            else:
+                self.classifier = read_out(in_size, recurrent=recurrent_classifier).to(device)
             self.classifier_loss = torch.nn.BCEWithLogitsLoss()
         self.device = device
         self.recurrent_classifier = recurrent_classifier
@@ -493,24 +497,33 @@ class criterion(nn.Module):
     def forward(self, phase_list, mask, transform, valid=False, targets=None):
         # losses will be 1d, with its length = episode length
         if not self.classify:
+            label_nb = ((mask.sum(2) > 0) * 1).sum(1)
             if valid:
                 losses = \
                     ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
+                                          label_nb,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
             else:
+
                 losses = \
                     ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform,
+                                          label_nb,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
             return torch.matmul(losses,
-                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
+                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device)), None
         else:
-            out = self.classifier.forward(torch.stack(phase_list))
-            loss = torch.stack([self.classifier_loss(out[p], targets)*(p+1)**self.degree for p in range(out.shape[0])]).sum(0)
-            return loss
+            out = self.classifier(torch.stack(phase_list))
+            loss = torch.stack([self.classifier_loss(out[p], targets)*(p+1)**self.degree for p in range(out.shape[0])])
+            with torch.no_grad():
+                _, predicted = torch.max(out[0], 1)
+                print('accuracy in batch : ',(predicted == targets[:,1]).sum().item()/targets.size(0))
+                print(loss)
+                batch_corrects = (predicted == targets[:,1]).sum()
+            return loss, batch_corrects
 
 
 class regularizer(nn.Module):
@@ -631,8 +644,9 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 class autoencoder(nn.Module):    
-    def __init__(self, img_side, num_global_control=0):
+    def __init__(self, img_side, num_global_control=0, device=0):
         super(autoencoder,self).__init__()
+        self.device = device
         self.num_global_control = num_global_control
         self.encoder = nn.Sequential(
             nn.Conv2d(1,16, kernel_size=5),
@@ -672,7 +686,7 @@ class read_out(nn.Module):
         real = torch.cos(phase)
         imag = torch.sin(phase)
         cplx = []
-        ipdb.set_trace()
+        #ipdb.set_trace()
         for part in [real, imag]:
             if self.recurrent:  
                 o, h = self.layers(part)
@@ -684,6 +698,19 @@ class read_out(nn.Module):
                 cplx.append(torch.stack(out))
         return torch.sqrt(cplx[0]**2 + cplx[1]**2)
 
+class read_out2(nn.Module):
+    def __init__(self,in_size, recurrent=False):
+        super(read_out2, self).__init__()
+        self.recurrent = recurrent
+        modules = [torch.nn.Linear(in_size, 256),nn.Tanh()]
+        modules += [torch.nn.Linear(256,2), nn.Softmax()]
+        self.layers = nn.Sequential(*modules)
+
+    def forward(self,phases):
+        out = []
+        for t in range(len(phases)):
+            out.append(self.layers(phases[t]))
+        return np.array(out)
 
 class ComplexConv(nn.Module):
     def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True):
@@ -696,6 +723,9 @@ class ComplexConv(nn.Module):
                                  dilation=dilation, groups=groups, bias=bias)
         self.conv_im = nn.Conv2d(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
                                  dilation=dilation, groups=groups, bias=bias)
+        self.act = nn.Tanh()
+        self.last = torch.nn.Linear(14,2)
+        self.softmax = nn.Softmax()
 
     def forward(self, x):  # shpae of x : [batch,2,channel,axis1,axis2]
         real = self.conv_re(x[:, 0]) - self.conv_im(x[:, 1])
@@ -704,19 +734,20 @@ class ComplexConv(nn.Module):
         return output
 
 class read_out_complex(nn.Module):
-    def __init__(self,in_size,in_channel=2, out_channel=32, kernel_size=3, stride=0, padding=0, dilation=1, bias=True, recurrent=False):
+    def __init__(self,in_size,in_channel=1, out_channel=1, kernel_size=3, stride=0, padding=1, dilation=0, bias=True, recurrent=False):
         super(read_out, self).__init__()
         self.recurrent = recurrent
-        self.complex_cov = ComplexConv(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
-                                 dilation=dilation, bias=bias)
-        modules = [torch.nn.Linear(output_size complex_cov, 256),nn.Tanh()]
-        modules += [torch.nn.GRU(256,2) if recurrent else torch.nn.Linear(256,2)]
-        self.layers = nn.Sequential(*modules)
+        self.complex_cov = ComplexConv(in_channel, out_channel, kernel_size, stride=stride, padding=padding,dilation=dilation, bias=bias)
+        #self.linear = torch.nn.Linear(1234, 2)
+        self.act = nn.Sigmoid()
+        #modules += [torch.nn.GRU(256,2) if recurrent else torch.nn.Linear(256,2)]
+        #self.layers = nn.Sequential(*modules)
 
     def forward(self,phase,input):
         out = []
         for t in range(len(phase)):
             comp = self.complex_cov(torch.stack([input,phase[t]]))
-            out.append(torch.sqrt(comp[:,0].flatten()**2 + comp[:,1].flatten()**2))
-        return torch.stack(self.layers(out)))
+            comp = self.act(torch.sqrt(comp[:, 0].flatten() ** 2 + comp[:, 1].flatten() ** 2).sum())
+            out.append([1-comp,comp])
+        return torch.stack(out)
         

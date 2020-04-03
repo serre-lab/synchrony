@@ -62,6 +62,9 @@ class Kuramoto(object):
             self.phase_0 = lambda b : self.current_phase.repeat(b, 1)
         elif initialization == 'gaussian':
             self.phase_0 = lambda b : torch.normal(0., .1, (b, self.N + self.gN)).float()
+        elif initialization == 'zeros':
+            self.current_phase = torch.zeros((1,self.N + self.gN)).float()
+            self.phase_0 = lambda b: self.current_phase.repeat(b, 1)
         elif initialization == 'categorical':
             self.phase_0 = lambda b : torch.randint(0, 4, (b, self.N + self.gN)).float() * 2*np.pi / 4.
         elif initialization == 'random_walk':
@@ -81,7 +84,7 @@ class Kuramoto(object):
             self.omega = lambda x,b : torch.zeros((b,self.N + self.gN))
         elif initialization == 'learned':
             self.freq_net = nets.autoencoder(int(np.sqrt(self.N)), num_global_control=self.gN).to(self.device)
-            self.omega = lambda x,b : self.freq_net.forward(x.to(self.freq_net.device())).reshape(b, -1)
+            self.omega = lambda x,b : self.freq_net.forward(x.to(self.device)).reshape(b, -1)
             #self.omega = lambda x,b : self.freq_net.forward(x).reshape(b, -1)
             return True
 
@@ -102,18 +105,19 @@ class Kuramoto(object):
         self.phase = self.phase + self.delta + self.eps*omega
         return self.phase
     
-    def _update3(self, phase, coupling, omega):
+    def _update3(self, phase, coupling, omega, dv):
         # efficient, much less memory usage
         n = torch.abs(torch.sign(coupling)).sum(2)
  
         self.delta = self.eps * \
                      (torch.bmm(coupling, torch.sin(phase).unsqueeze(2).float()).squeeze(2) * torch.cos(phase) -
                      torch.bmm(coupling, torch.cos(phase).unsqueeze(2).float()).squeeze(2) * torch.sin(phase)) / n
-        phase = phase + self.delta + self.eps*omega
+        phase = phase + self.eps*omega + self.delta.to(dv)
         return phase
 
     def evolution(self, coupling, omega=None, batch=None, hierarchical=False):
-        b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0] 
+
+        b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0]
         dv = coupling[0].device if self.gN > 0 else coupling.device
         phase = self.phase_0(b)
         self.eps = self.update_rate
@@ -140,11 +144,10 @@ class Kuramoto(object):
         else:
             batch_lconnectivity = self.connectivity0.unsqueeze(0).repeat(coupling.shape[0],1,1).to(dv)
             coupling = torch.zeros(phase.shape[0], phase.shape[1], phase.shape[1]).to(dv).scatter_(dim=2,index=batch_lconnectivity, src=coupling)
-
         for i in range(self.time_steps):
-            new = self.update(phase_list[-1].to(dv), coupling, omega.to(dv))
+            new = self.update(phase_list[-1], coupling, omega.to(dv),dv)
             self.eps_anneal(i)
-            phase_list.append(new)
+            phase_list.append(new.to(dv))
         try:
             return phase_list, coupling, omega.to(dv)
         except RuntimeError:

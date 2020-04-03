@@ -7,7 +7,7 @@ import subprocess
 import json, ast
 import ipdb
 
-#os.environ["CUDA_VISIBLE_DEVICES"]='1,2'
+os.environ["CUDA_VISIBLE_DEVICES"]='1,2'
 
 meta_parser = argparse.ArgumentParser()
 meta_parser.add_argument('--name', type=str, default='SAME_DIFF')
@@ -20,6 +20,7 @@ if not config.has_section(meta_args.name):
     ValueError('This is not a recognized experiment.')
 
 if meta_args.name[-6:] == 'search':
+
     sub_experiment = config.get(meta_args.name, 'sub_experiment')
     sub_args = {}
     for item in config.items(sub_experiment): sub_args[item[0]] = item[1]
@@ -40,8 +41,9 @@ if meta_args.name[-6:] == 'search':
         subprocess.call(sys.executable+process_string + '&', shell=True)
     
 else:
-    arg_strings = ['--{} {}'.format(key, value) + ' ' for (key, value) in config.items(meta_args.name)] 
+    arg_strings = ['--{} {}'.format(key, value) + ' ' for (key, value) in config.items(meta_args.name)]
     process_string = ' train.py '
     for st in arg_strings:
         process_string += st
+    print(sys.executable + process_string)
     subprocess.call(sys.executable+process_string, shell=True)

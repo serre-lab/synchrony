@@ -388,32 +388,37 @@ class displayer(object):
         partition_phases = [self.phases[m] for m in mask]
 
     def static_evol(self, clustered_last_phase, nrows, ncols, input, save_name, mask):
-        interval = int(np.floor(self.phases.shape[0] / 5.))
+        steps=7
+        interval = int(np.floor(self.phases.shape[0] / steps))
         if self.phases.shape[0] > 1:
-            phase_list = [self.phases[i * interval] for i in range(5)]
+            phase_list = [self.phases[i * interval] for i in range(steps)]
         else:
-            phase_list = [self.phases[0] for i in range(5)]
-        phase_list[-2] = self.phases[-1]
-        phase_list[-1] = clustered_last_phase
+            phase_list = [self.phases[0] for i in range(steps)]
+        phase_list.append(self.phases[-1])
 
-        fig, axes = plt.subplots(1, 7, figsize=(8, 4))
+        if clustered_last_phase is not None:
+            phase_list.append(clustered_last_phase)
+        if mask is not None:
+            phase_list += mask
+        fig, axes = plt.subplots(1, len(phase_list), figsize=(8, 4))
         axes.reshape(-1)
         axes[0].imshow(np.reshape(input, (nrows, ncols)), cmap='gray')
         axes[0].axis('off')
         axes[0].title.set_text('input')
-        for i in range(5):
-            axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
-            axes[i + 1].axis('off')
-            if i == 4:
-                axes[i + 1].title.set_text('quantized')
-            elif i == 3:
-                axes[i + 1].title.set_text('last_step')
-            else:
-                axes[i + 1].title.set_text('step' + str(int(i * interval)))
-        
-        axes[6].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
-        axes[6].axis('off')
-        axes[6].title.set_text('mask')
+        for i in range(1,len(phase_list)):
+            axes[i].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
+            axes[i].axis('off')
+            axes[i].title.set_text('step' + str(int(i * interval)))
+        if (clustered_last_phase is not None):
+            axes[-1].title.set_text('quantized')
+            axes[-2].title.set_text('last_step')
+        else:
+            axes[-1].title.set_text('last_step')
+
+        if mask is not None:
+            axes[len(phase_list)+2].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
+            axes[len(phase_list)+2].axis('off')
+            axes[len(phase_list)+2].title.set_text('mask')
         #cbar_ax = fig.add_axes([0.95, 0.31, 0.01, 0.38])
         #plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
         #                               cmap='hsv'), cax=cbar_ax)
@@ -458,14 +463,14 @@ class displayer(object):
             axes[i + 1].imshow(np.reshape(self.phases[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
             axes[i + 1].axis('off')
             axes[i + 1].title.set_text('step' + str(int(i)))
-        
-        axes[-2].imshow(np.reshape(clustered_last_phase, (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
-        axes[-2].axis('off')
-        axes[-2].title.set_text('quantized')
-
-        axes[-1].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
-        axes[-1].axis('off')
-        axes[-1].title.set_text('mask')
+        if clustered_last_phase is not None:
+            axes[-2].imshow(np.reshape(clustered_last_phase, (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
+            axes[-2].axis('off')
+            axes[-2].title.set_text('quantized')
+        if mask is not None:
+            axes[-1].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
+            axes[-1].axis('off')
+            axes[-1].title.set_text('mask')
         cbar_ax = fig.add_axes([0.95, 0.31, 0.01, 0.38])
         #plt.colorbar(cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=2 * np.pi),
         #                               cmap='hsv'), cax=cbar_ax)

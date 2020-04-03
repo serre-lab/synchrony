@@ -129,7 +129,7 @@ class polyomino_scenes(object):
 
 
 def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, data_kind='train',
-             save_dir='/media/data/mchalvid/osci_save_v1/data/polyominoes_new', display=False):
+             save_dir='/media/data/mchalvid/osci_save_v3_masks/data/polyominoes_small', display=False, get_masks=True, masks_nb=4):
     rot_string = 'fixed' if not rotation else 'free'
     size_string = 'large' if img_side >= 32 else 'small'
     # Specify save dir
@@ -212,14 +212,17 @@ def generate(img_side=32, num_imgs=10000, n=4, num_objects=4, rotation=False, da
                 # if no overlap, add object to canvas and add mask to the masks list
                 masks += [mask]
             masks.append(1 - canvas)  # the background is the final group
-            # masks += [np.zeros_like(canvas) for _ in range(max_masks - len(masks))]
+            if get_masks == True:
+                masks += [np.zeros_like(canvas) for _ in range(masks_nb - len(masks)+1)]
             canvas, masks = upscale(canvas, np.array(masks).reshape(len(masks), -1), 2)
             if len(list(*groupings)) == 1:
                 label = np.ones(canvas.shape)
             else:
                 label = np.zeros(canvas.shape)
-            print(list(*groupings))
-            data = np.concatenate([np.expand_dims(canvas, axis=0), masks,np.expand_dims(label, axis=0)], axis=0)
+            if get_masks == True:
+                data = np.concatenate([np.expand_dims(canvas, axis=0),masks,np.expand_dims(label, axis=0)], axis=0)
+            else:
+                data = np.concatenate([np.expand_dims(canvas, axis=0),np.expand_dims(label, axis=0)], axis=0)
             fp = file_paths[num_groups]
             if display:
                 if i % 1000 == 0:
@@ -260,16 +263,16 @@ def upscale(image, mask, scale):
 
 
 if __name__ == '__main__':
-    ns = [5]
+    ns = [8]
     num_objects = [2]
     num_imgs = 10000
-    rotations = [False]
+    rotations = [True]
     data_kind = ['train','test']
-    img_side = 32
+    img_side = 20
     display = True
     for n in ns:
         for o in num_objects:
             for r in rotations:
                 for d in data_kind:
                     print('Generating images: {}-ominoes, {} objects, {} rotations, {} set'.format(n, o, r, d))
-                    generate(img_side=img_side, num_imgs=num_imgs, n=n, num_objects=o, rotation=r, data_kind=d, display=display)
+                    generate(img_side=img_side, num_imgs=num_imgs, n=n, num_objects=o, rotation=r, data_kind=d, display=display,masks_nb=max(num_objects))

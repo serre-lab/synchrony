@@ -47,7 +47,7 @@ def exinp_integrate_torch(phase, mask, transform, device):
     return dl + sl
 
 
-def exinp_integrate_torch2(phase, mask, transform, device):
+def exinp_integrate_torch2(phase, mask, transform,label_nb, device):
     # With efficient coding
     # integrate the calculation of both synchrony and desynchrony losses that I am currently using
     # This will directly give you the summation of two losses
