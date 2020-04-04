@@ -354,6 +354,7 @@ class base_conv(KuraNet):
         self.split = args.split
         self.convs = []
         self.depth = args.depth
+        self.dropout_p = args.dropout_p
 
         start_filts = int(args.start_filts / 2)
         for i in range(self.depth):
@@ -364,6 +365,7 @@ class base_conv(KuraNet):
             
 
         self.convs = nn.ModuleList(self.convs)
+        self.dropout = nn.Dropout(self.dropout_p)
         # self.conv_final = nn.Conv2d(outs, self.out_channels, kernel_size=1, stride=1, padding=0)
         self.out_channels = outs
         if args.intrinsic_frequencies == 'conv':
@@ -387,7 +389,7 @@ class base_conv(KuraNet):
             x = torch.tanh(module(x)) #if i < self.depth - 1 else torch.sigmoid(module(x))
 
         # x = self.conv_final(x)
-
+        x = self.dropout(x.reshape(x.shape[0], -1)).reshape(x.shape[0], x.shape[1], x.shape[2])
         omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
             
 

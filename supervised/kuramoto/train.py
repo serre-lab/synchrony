@@ -40,6 +40,7 @@ parser.add_argument('--depth', type=int, default=2)
 parser.add_argument('--out_channels', type=int, default=32)
 parser.add_argument('--split', type=int, default=4)
 parser.add_argument('--kernel_size', type=str, default=5)
+parser.add_argument('--droput_p', type=float, default=0.0)
 parser.add_argument('--num_cn', type=int, default=8)
 parser.add_argument('--num_global_control', type=int, default=0)
 parser.add_argument('--p_rewire', type=float, default=0.0)
@@ -120,7 +121,7 @@ training_set = datasets.DatasetFolder(train_path, np.load, extensions=('npy',))
 training_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=True, drop_last=True)
 # testing set
 testing_set = datasets.DatasetFolder(test_path, np.load, extensions=('npy',))
-testing_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=True,
+testing_loader = DataLoader(testing_set, batch_size=args.batch_size, shuffle=True,
 	drop_last=True)
 
 #####################
@@ -186,8 +187,8 @@ for epoch in range(args.train_epochs):
     cont_epoch = True
     PL_epoch = []
     clustering_epoch = []
-
-    for step, (train_data, _) in tqdm(enumerate(training_loader)):
+    model.train()
+    fo    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()r step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
         label_inds = (((mask.sum(2) > 0)*1).sum(1) == args.segments - 1)*1
@@ -297,6 +298,7 @@ for epoch in range(args.train_epochs):
         clustering_epoch = []
 
         # Testing
+        model.eval()
         with torch.no_grad():
             for step, (test_data, _) in tqdm(enumerate(testing_loader)):
                 # cross-validation

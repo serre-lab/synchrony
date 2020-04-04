@@ -41,7 +41,7 @@ def read_data(data_inds, path, img_side, group_size, device='cuda', valid=False)
         return tc.tensor(images).float().detach().to(device), tc.tensor(masks).float().detach().to(device)
 
 
-def display(displayer, phase_list, images, masks, clustered_batch, coupling, omega, img_side, group_size, path, name, rf_type):
+def display(displayer, phase_list, images, masks, clustered_batch, coupling, omega, img_side, group_size, path, name, rf_type, verbose=1):
     # randomly select images to display
     ind = np.random.randint(images.shape[0])
     image = images[ind].cpu().data.numpy()
@@ -123,7 +123,7 @@ def kura_param_show(coupling, omega, img_side, path, name):
         plt. gca().grid(False)
         plt.axis('off')
         plt.colorbar(im)
-        plt.savefig(path + '{}_frequencies_{}'.format(layer_name[o], name))
+        plt.savefig(os.path.join(path,'{}_frequencies_{}'.format(layer_name[o], name)))
         plt.close()
     
     return True

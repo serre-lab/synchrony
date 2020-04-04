@@ -105,14 +105,14 @@ class Kuramoto(object):
     def _update3(self, phase, coupling, omega):
         # efficient, much less memory usage
         n = torch.abs(torch.sign(coupling)).sum(2)
- 
-        self.delta = self.eps * \
+        self.delta = self.eps * ( omega + \
                      (torch.bmm(coupling, torch.sin(phase).unsqueeze(2).float()).squeeze(2) * torch.cos(phase) -
-                     torch.bmm(coupling, torch.cos(phase).unsqueeze(2).float()).squeeze(2) * torch.sin(phase)) / n
-        phase = phase + self.delta + omega
+                     torch.bmm(coupling, torch.cos(phase).unsqueeze(2).float()).squeeze(2) * torch.sin(phase)) / n)
+        phase = phase + self.delta
         return phase
 
     def evolution(self, coupling, omega=None, batch=None, hierarchical=False):
+        ipdb.set_trace()
         b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0] 
         dv = coupling[0].device if self.gN > 0 else coupling.device
         phase = self.phase_0(b)
