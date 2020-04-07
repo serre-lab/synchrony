@@ -1,5 +1,9 @@
 import numpy as np
 import torch
+from torch import nn
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 
 def exinp_integrate_torch(phase, mask, transform, device):
     phase = phase.to(device)
@@ -403,3 +407,36 @@ def calc_sbd(ins_seg_gt, ins_seg_pred):
     _dice1 = calc_bd(ins_seg_gt, ins_seg_pred)
     _dice2 = calc_bd(ins_seg_pred, ins_seg_gt)
     return min(_dice1, _dice2)
+
+class Entropy(nn.Module):
+    def __init__(self,args, device='cpu'):
+        super(Entropy, self).__init__()
+        self.args = args
+        self.device=device
+        self.bins = 600
+        self.min = 0
+        self.max = 2*np.pi
+        self.sigma = 0.05
+        self.delta = float(self.max - self.min) / float(self.bins)
+        self.centers = float(self.min) + self.delta * (torch.arange(self.bins).float())
+        self.mask_reflection = torch.zeros(2)
+        self.mask_reflection[0] = 0
+        self.mask_reflection[-1] = 2 * np.pi
+        self.diffs = torch.unsqueeze(self.mask_reflection, 0) - torch.unsqueeze(self.centers, 1)
+        self.mask = torch.exp(-0.5 * (self.diffs / self.sigma) ** 2) / (self.sigma * np.sqrt(np.pi * 2))
+        self.mask = self.mask.sum(1) / (self.mask.max()*2)
+        self.mask = self.mask.to(self.device)
+        self.centers = self.centers.to(self.device)
+
+    def forward(self, phase_list, path, epoch, it):
+
+        entropies = []
+        for x in phase_list:
+            diffs = torch.unsqueeze(x, 1).to(self.device) - torch.unsqueeze(self.centers, 1).to(self.device)
+            prob = torch.exp(-0.5 * (diffs / self.sigma) ** 2) / (self.sigma * np.sqrt(np.pi * 2)) * self.delta
+            prob = prob.sum(dim=2)
+            flip = torch.flip(prob,[1]).to(self.device)
+            prob = prob + self.mask.repeat(prob.size(0),1).to(self.device) * flip
+            entropy = -1.0 * nn.functional.softmax(prob, dim=1) * nn.functional.log_softmax(prob, dim=1)
+            entropies.append(entropy.sum(1))
+        return torch.stack([entropies[p]*(p+1)**self.args.time_weight for p in range(len(entropies))]).to(self.device).sum(), prob

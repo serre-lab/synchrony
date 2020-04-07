@@ -7,7 +7,7 @@ import subprocess
 import json, ast
 import ipdb
 
-os.environ["CUDA_VISIBLE_DEVICES"]='1,2'
+os.environ["CUDA_VISIBLE_DEVICES"]='2'
 
 meta_parser = argparse.ArgumentParser()
 meta_parser.add_argument('--name', type=str, default='SAME_DIFF')
@@ -18,7 +18,6 @@ config.read('experiments.cfg')
 
 if not config.has_section(meta_args.name):
     ValueError('This is not a recognized experiment.')
-
 if meta_args.name[-6:] == 'search':
 
     sub_experiment = config.get(meta_args.name, 'sub_experiment')

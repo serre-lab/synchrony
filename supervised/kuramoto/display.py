@@ -10,6 +10,9 @@ import numpy as np
 import sys
 import losses
 import copy
+import pandas as pd
+import seaborn as sns
+sns.set(style="whitegrid")
 from utils import clustering
 import ipdb
 
@@ -484,4 +487,28 @@ class displayer(object):
         ax2.axis('off')
         plt.tight_layout(pad=3.5, w_pad=0.5, h_pad=0.6)
         plt.savefig(save_name + '.png')
+        plt.close()
+
+    def coherence_order(self, orders, labels, save_name):
+        category = ['same' if i else 'different' for i in labels[:,1]]
+        data = pd.DataFrame(data=list(zip(category,orders.cpu().numpy())))
+        f, ax = plt.subplots(figsize=(11, 6))
+        sns.violinplot(x=data[0],y=data[1],width=0.3)
+        sns.despine(left=True, bottom=True)
+        ax.set_ylabel('')
+        ax.set_xlabel('')
+        f.savefig(save_name + '.png')
+        plt.close()
+
+    def polar_dist(self,path, prob,name):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='polar')
+        ax.set_yticklabels([])
+        ax.set_rmax(1)
+        p = prob.cpu().detach().numpy()
+        theta = (2*np.pi/600) * (np.arange(600))
+        colors = plt.get_cmap('hsv')([10 * i for i in range(prob.size()[0])])
+        for i in range(prob.size()[0]):
+            c = ax.plot(theta, p[i], c=colors[i], linewidth=.8, alpha=0.75)
+        plt.savefig(path + '/dist_entrop' + name + '.png')
         plt.close()

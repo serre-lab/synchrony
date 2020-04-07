@@ -2,7 +2,6 @@ import os, subprocess
 #import nest_asyncio
 #nest_asyncio.apply()
 import nets
-import time
 import argparse
 import numpy as np
 import torch
@@ -11,17 +10,15 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
 import display as disp
-import sys
 from distutils.util import strtobool
-from losses import calc_sbd
+from losses import calc_sbd, Entropy
 from utils import *
-import ipdb
 import warnings
 warnings.filterwarnings('ignore')
 from NetProp import NetProp 
 """
 DataParallel
-kuramoto and loss_func_ex are integrated into an nn.Module to operate parallel calculation
+kuramoto, loss_func_ex and entropy regularizer are integrated into an nn.Module to operate parallel calculation
 """
 parser = argparse.ArgumentParser()
 
@@ -51,10 +48,13 @@ parser.add_argument('--sw', type=lambda x:bool(strtobool(x)),default=False)
 parser.add_argument('--time_steps', type=int, default=8)
 parser.add_argument('--record_steps', type=int, default=8)
 parser.add_argument('--walk_step', type=float, default=.1)
-parser.add_argument('--segmentation', type=lambda x:bool(strtobool(x)), default=True)
+parser.add_argument('--task', type=str, default='classify')
 parser.add_argument('--pretrained', type=lambda x:bool(strtobool(x)), default=False)
+parser.add_argument('--read_out_type', type=str, default='2')
+
 
 #graph stats
+parser.add_argument('--coherence_order', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--graph_stats', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--path_length', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--cluster',  type=lambda x:bool(strtobool(x)), default = False)
@@ -63,6 +63,7 @@ parser.add_argument('--glob_order_parameter', type=lambda x:bool(strtobool(x)), 
 parser.add_argument('--bassett', type=lambda x:bool(strtobool(x)), default = False)
 parser.add_argument('--one_image', type=lambda x:bool(strtobool(x)), default = False)
 parser.add_argument('--multi_image', type=lambda x:bool(strtobool(x)), default = False )
+
 # Data parameters
 parser.add_argument('--img_side', type=int, default=32)
 parser.add_argument('--segments', type=int, default=4)
@@ -74,15 +75,28 @@ parser.add_argument('--time_weight', type=int, default=2)
 parser.add_argument('--anneal', type=float, default=0)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--sparsity_weight', type=float, default=1e-5)
+parser.add_argument('--entropy_lambda',type=float, default=5e-5)
 
 # loss parameters
 parser.add_argument('--transform', type=str, default='linear')
 parser.add_argument('--classify',type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--recurrent_classifier',type=lambda x:bool(strtobool(x)), default=False)
+parser.add_argument('--entropy_reg',type=lambda x:bool(strtobool(x)), default=False)
+
 
 args = parser.parse_args()
 args.kernel_size = [int(k) for k in args.kernel_size.split(',')]
-args.exp_name = '_'.join(['SR_polyominoes_8_free_rotation_test_2_gpus',str(args.model_name),str(args.classify),str(args.pretrained),str(args.time_steps),str(args.update_rate),str(args.record_steps),str(args.phase_initialization),str(args.intrinsic_frequencies),str(args.sparsity_weight)])
+args.exp_name = ''.join(['DEBUG11_SR_polyominoes_8_free',str(args.model_name),
+                          '_task=',str(args.task),
+                          '_entropyreg=',str(args.entropy_reg)+str(args.entropy_lambda),
+                          '_num_cn=',str(args.num_cn),
+                          '_ts=',str(args.time_steps),
+                          '_updaterate=',str(args.update_rate),
+                          '_recordstep=',str(args.record_steps),
+                          '_phaseinit=',str(args.phase_initialization),
+                          '_intfreq=',str(args.intrinsic_frequencies),
+                          '_readout=',str(args.read_out_type),
+                          '_sparseweight=',str(args.sparsity_weight)])
 
 if args.interactive:
     import matplotlib.pyplot as plt
@@ -101,24 +115,22 @@ else:
  ######################
 # parameters
 num_test = 1000
+args.segmentation = args.task=='segmentation'
+args.classify = args.task=='classify'
 
 ######################
-def is_valid(path):
-    if path[:3]=='img' and path[-3:]=='npy':
-        return True
-    else:
-        return False
-# path
 #load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name)
 load_dir = os.path.join('/media/data/mchalvid/osci_save_v3_masks/data', args.data_name)
 save_dir = os.path.join('/media/data/mchalvid/osci_save_v3_masks/results', args.exp_name)
 model_dir = os.path.join('/media/data/mchalvid/osci_save_v3_masks/models', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
+
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 if not os.path.exists(model_dir):
     os.makedirs(model_dir)
+
 subprocess.call('rm -rf {}'.format(os.path.join(save_dir, '*')), shell=True)
 subprocess.call('rm -rf {}'.format(os.path.join(model_dir, '*')), shell=True)
 
@@ -162,30 +174,32 @@ if torch.cuda.device_count() > 1 and args.device=='cuda':
     if not args.intrinsic_frequencies=='zero':
         model.module.osci.freq_net = model.module.osci.freq_net.to(args.device)
     freq_params = model.module.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
-    criterion = nn.DataParallel(nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device)).to(args.device)
+    criterion = nn.DataParallel(nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device, read_out_type=args.read_out_type)).to(args.device)
+    if args.entropy_reg == True:
+        Entropy = nn.DataParallel(Entropy(device =args.device, args=args))
     classifier_params = criterion.module.classifier.parameters() if args.classify is True else []
 else:
     model = nets.load_net(args, connectivity, args.num_global_control)
     if args.pretrained:
-
         model_dict = model.state_dict()
         pretrained_dict = {k: v for k, v in exp['model_state_dict'].items() if k in model_dict}
         model_dict.update(pretrained_dict)
         model.load_state_dict(model_dict)
-
         model_osci_freq = model.osci.freq_net.state_dict()
         pretrained_dict = {k: v for k, v in exp['model_state_dict'].items() if k in model_osci_freq}
         model_osci_freq.update(pretrained_dict)
         model.osci.freq_net.load_state_dict(model_osci_freq)
-
     model = model.to(args.device)
     if not args.intrinsic_frequencies=='zero':
         model.osci.freq_net = model.osci.freq_net.to(args.device)
+    if args.entropy_reg == True:
+        Entropy = Entropy(device =args.device, args=args).to(args.device)
     freq_params = model.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
-    criterion = nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device).to(args.device)
+    criterion = nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device, read_out_type=args.read_out_type).to(args.device)
     classifier_params = criterion.classifier.parameters() if args.classify is True else []
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
 
+#Statistics history
 loss_history = []
 accuracy_history = []
 accuracy_history_test = []
@@ -194,8 +208,13 @@ loss_history_test = []
 sbd_history_test=[]
 epoch_history_test=[]
 coupling_history = []
+entropy_history = []
+orders_history = []
 
+#Dynamics visualization
 displayer = disp.displayer(args.segments, interactive=args.interactive)
+
+
 if not args.pretrained:
     if args.intrinsic_frequencies == 'learned':
         params = [q1 for q1 in model.parameters()] + [q2 for q2 in freq_params]
@@ -213,7 +232,6 @@ if args.classify is True:
     params += [q3 for q3 in classifier_params]
 
 params = tuple(params)
-
 op = torch.optim.Adam(params, lr=args.learning_rate)
 
 ######################
@@ -224,6 +242,7 @@ PL_train = []
 PL_val = []
 clustering_train = []
 clustering_val = []
+
 for epoch in range(args.train_epochs):
     print('Epoch: {}'.format(epoch))
 
@@ -236,7 +255,7 @@ for epoch in range(args.train_epochs):
 
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
-        if args.segmentation  == True:
+        if args.task  == 'segmentation':
             mask = torch.tensor(train_data[:, 1:-1, ...]).reshape(args.batch_size, -1, args.img_side * args.img_side).to(args.device).float()
             label_nb = ((mask.sum(2) > 0) * 1).sum(1)
             #label_inds = (((mask.sum(2) > 0)*1).sum(1) == args.segments - 1)*1
@@ -249,7 +268,7 @@ for epoch in range(args.train_epochs):
         phase_list_train, coupling_train, omega_train = model(batch.unsqueeze(1))
         last_phase = phase_list_train[-1].cpu().detach().numpy()
 
-        if args.segmentation == True:
+        if args.task  == 'segmentation':
             colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
         else:
             colored_mask = None
@@ -271,8 +290,17 @@ for epoch in range(args.train_epochs):
                 else:
                     ex_connectivity = connectivity
 
-        tavg_loss, correct_batch = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False ,targets=labels)
-        tavg_loss = tavg_loss.mean() / norm
+        tavg_loss, correct_batch = criterion(phase_list_train[-1*args.record_steps:], mask, batch, args.transform, valid=False ,targets=labels)
+        tavg_loss = 100 * tavg_loss.mean() / norm
+
+        #Regularizer
+        if args.entropy_reg:
+            ent, prob = Entropy(phase_list_train[-1 * args.record_steps:], save_dir, epoch, step)
+            ent = ent.mean() * args.entropy_lambda
+            e = ent.data.cpu().numpy()
+            tavg_loss += ent
+        else:
+            e = None
 
         if coupling_train is not None:
             tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
@@ -283,25 +311,27 @@ for epoch in range(args.train_epochs):
         tavg_loss.backward()
         op.step()
 
-        #compute accuracy
+        #Compute accuracy
         if args.classify == True:
             correct += correct_batch
 
         # visualize training
         clustered_batch = []
         if step % args.show_every == 0:
-            if args.segmentation == True:
+            if args.task  == 'segmentation':
                 for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
                     clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
                     sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+                orders = None
                 display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
-                    'train{}_{}'.format(epoch,step), args.rf_type, args.segmentation)
+                    'train{}_{}'.format(epoch,step), args.rf_type, labels, args.segmentation, args.coherence_order, orders, prob)
             else:
                 for idx, sample_phase in enumerate(last_phase):
                     clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
-                    #sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+                if args.coherence_order:
+                    orders = universal_order_parameter(phase_list_train[-1], coupling_train, connectivity, args.device, args.num_cn)
                 display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
-                    'train{}_{}'.format(epoch,step), args.rf_type, args.segmentation)
+                    'train{}_{}'.format(epoch,step), args.rf_type, labels, args.segmentation, args.coherence_order, orders, prob)
 
 
         if step % 600 == 0:
@@ -319,8 +349,7 @@ for epoch in range(args.train_epochs):
                 connectivity = ex_connectivity 
                 np.save(save_dir+'/multi_coupling_train_epoch'+str(epoch)+'step'+str(step),coupling_train.cpu().detach().numpy())
 
-                
-            
+
             if args.cluster == True:
                 #pass in whole coupling train and batch_connectivity and then deal with it in NP?
                 #import pdb;pdb.set_trace()
@@ -357,11 +386,17 @@ for epoch in range(args.train_epochs):
         sbd_history.append(sbd / ((1+ (step // args.show_every)) * args.batch_size))
 
     loss_history.append(l)
-
+    if args.entropy_reg:
+        entropy_history.append(e)
+    if args.coherence_order:
+        orders_history.append(orders.cpu().numpy())
     if args.classify == True:
-        print('accuracy : {}'.format(100*correct/(args.batch_size*step)))
-        accuracy_history.append(100*correct/(args.batch_size*step))
-    
+        accuracy_history.append(float(100*correct.sum()/(args.batch_size*step)))
+
+    #############
+    #  TESTING  #
+    #############
+
     if (epoch+1) % args.eval_interval == 0:
         torch.cuda.empty_cache()
         l=0
@@ -369,10 +404,8 @@ for epoch in range(args.train_epochs):
         sbd = 0
         PL_epoch = []
         clustering_epoch = []
-        # Testing
         with torch.no_grad():
             for step, (test_data, _) in tqdm(enumerate(testing_loader)):
-                # cross-validation
                 batch = torch.tensor(test_data[:, 0, ...]).to(args.device).float()
                 if args.segmentation == True:
                     mask = torch.tensor(test_data[:, 1:-1, ...]).reshape(args.batch_size, -1, args.img_side * args.img_side).to(args.device).float()
@@ -382,7 +415,6 @@ for epoch in range(args.train_epochs):
                 else:
                     mask = None
                     labels = one_hot_label(test_data[:, -1, ...]).to(args.device).float()
-
 
                 phase_list_test, coupling_test, omega_test = model(batch.unsqueeze(1))
                 last_phase = phase_list_test[-1].cpu().detach().numpy()
@@ -396,8 +428,7 @@ for epoch in range(args.train_epochs):
                             clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
                             sbd += calc_sbd(clustered_batch[idx] + 1, sample_mask + 1)
 
-
-                tavg_loss_test, correct_batch = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
+                tavg_loss_test, correct_batch = criterion(phase_list_test[-1*args.record_steps:], mask, batch, args.transform, valid=True, targets=labels)
                 tavg_loss_test = tavg_loss_test.mean() / norm
 
                 if coupling_test is not None:
@@ -413,8 +444,8 @@ for epoch in range(args.train_epochs):
                 if step % args.show_every == 0:
                     # visualize validation and save
                     # validation example, save its coupling matrix
-                    display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test, args.img_side, args.segments, save_dir, 
-                    'test{}_{}'.format(epoch, step), args.rf_type, args.segmentation)
+                    display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test, args.img_side, args.segments, save_dir,
+                    'test{}_{}'.format(epoch, step), args.rf_type, labels, args.segmentation, args.coherence_order, orders)
                 #if step*args.batch_size > num_test:
                 #    break
                 if step % 600 == 0:
@@ -459,10 +490,11 @@ for epoch in range(args.train_epochs):
             PL_val.append(np.mean(np.array(PL_epoch)))
         elif args.path_length==True: 
             PL_val.append(-1)
+
         loss_history_test.append(l)
         sbd_history_test.append(sbd / ((step+1) * args.batch_size))
         epoch_history_test.append(epoch)
-        accuracy_history_test.append(100 * correct / (args.batch_size * step))
+        accuracy_history_test.append(float(100*correct.sum()/(args.batch_size * step)))
 
     # save file s
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
@@ -472,9 +504,14 @@ for epoch in range(args.train_epochs):
 
     plt.plot(loss_history)
     plt.plot(epoch_history_test, loss_history_test)
-    plt.title('Time Averaged Loss')
+    plt.title('Loss')
     plt.legend(['train', 'valid'])
     plt.savefig(save_dir + '/loss' + '.png')
+    plt.close()
+
+    plt.plot(entropy_history)
+    plt.title('Entropy of phase distribution')
+    plt.savefig(save_dir + '/Entropy' + '.png')
     plt.close()
 
     plt.plot(sbd_history)
@@ -492,10 +529,12 @@ for epoch in range(args.train_epochs):
     plt.close()
 
     np.save(os.path.join(save_dir, 'train_accuracy.npy'), np.array(accuracy_history))
-    np.save(os.path.join(save_dir, 'test_accuracy.npy'), np.array(accuracy_history_test))
+    np.save(os.path.join(save_dir, 'train_entropy.npy'), np.array(entropy_history))
+    np.save(os.path.join(save_dir, 'train_orders.npy'), np.array(orders_history))
     np.save(os.path.join(save_dir, 'train_loss.npy'), np.array(loss_history))
-    np.save(os.path.join(save_dir, 'valid_loss.npy'), np.array(loss_history_test))
     np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_history))
+    np.save(os.path.join(save_dir, 'valid_accuracy.npy'), np.array(accuracy_history_test))
+    np.save(os.path.join(save_dir, 'valid_loss.npy'), np.array(loss_history_test))
     np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_history_test))
     np.save(os.path.join(save_dir, 'valid_epoch.npy'), np.array(epoch_history_test))
    

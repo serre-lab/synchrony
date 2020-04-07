@@ -21,7 +21,11 @@ from sklearn.mixture import BayesianGaussianMixture
     2) small-world (sw=True, p_rewire>0)
    Add hierarchical (num_global_control>0 and ==n^2 and (img_side%~)==0)
 """
-
+def is_valid(path):
+    if path[:3]=='img' and path[-3:]=='npy':
+        return True
+    else:
+        return False
 
 def read_data(data_inds, path, img_side, group_size, device='cuda', valid=False):
     images = np.zeros((len(data_inds), img_side, img_side))
@@ -41,7 +45,7 @@ def read_data(data_inds, path, img_side, group_size, device='cuda', valid=False)
         return tc.tensor(images).float().detach().to(device), tc.tensor(masks).float().detach().to(device)
 
 
-def display(displayer, phase_list, images, masks, clustered_batch, coupling, omega, img_side, group_size, path, name, rf_type, segmentation=False):
+def display(displayer, phase_list, images, masks, clustered_batch, coupling, omega, img_side, group_size, path, name, rf_type, labels, segmentation=False, coherence_order=False, orders=None, prob=None):
     # randomly select images to display
     ind = np.random.randint(images.shape[0])
     image = images[ind].cpu().data.numpy()
@@ -62,6 +66,11 @@ def display(displayer, phase_list, images, masks, clustered_batch, coupling, ome
         colored_mask = None
         clustered = None
 
+    if coherence_order:
+        displayer.coherence_order(orders, labels, path + '/coherence_order_' + name)
+
+    if prob is not None:
+        displayer.polar_dist(path, prob, name)
     displayer.set_phases(np_phase_list)
 
     if rf_type == 'arange':
@@ -258,3 +267,30 @@ def clustering(phase, n_clusters):
 def one_hot_label(mask):
     return tc.zeros(mask.shape[0],2).scatter_(1, tc.tensor(mask[:,0,0] == 1).long().unsqueeze(1), tc.ones(mask.shape[0],2))
 
+def universal_order_parameter(phase, coupling, connectivity, dv, num_cn):
+    with tc.no_grad():
+        batch_connectivity = connectivity.unsqueeze(0).repeat(coupling.shape[0], 1, 1).to(dv)
+        adjacency = tc.zeros(phase.shape[0], phase.shape[1], phase.shape[1]).to(dv).scatter_(dim=2,
+                                                                                               index=batch_connectivity,
+                                                                                               src=tc.ones(coupling.size()).to(dv))
+
+        diffs = tc.unsqueeze(phase, 1).to(dv) - tc.unsqueeze(phase, 1).transpose(2,1).to(dv)
+        #print(diffs.size(),phase.size(),tc.cos(diffs.repeat(phase.shape[0],1,1)).size())
+        local_orders = adjacency * tc.abs(tc.cos(diffs))
+    return local_orders.sum((1,2))/adjacency.sum()
+
+def Summary(experiments):
+    experiments_list = os.listdir(experiments)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.set_ylim([40,100])
+    colors = plt.get_cmap('hsv')([50*i+100 for i in range(len(experiments))])
+    for i, path in enumerate(experiments_list):
+        exp_name = path.split('rotation')[1]
+        train_history = np.load(os.path.join(dir,path,'train_accuracy.npy'),allow_pickle=True)
+        valid_history = np.load(os.path.join(dir,path,'valid_accuracy.npy'),allow_pickle=True)
+        ax.plot(np.arange(150),train_history,c=colors[i], linewidth=.8, alpha=0.75, label='train_{}'.format(exp_name))
+        ax.plot(np.arange(10,160,10), valid_history, c=colors[i], linewidth=.8, alpha=0.75, linestyle='dotted',label='valid_{}'.format(exp_name))
+    plt.tight_layout(pad=3.5, w_pad=0.5, h_pad=0.6)
+    plt.legend(loc='lower right')
+    plt.savefig(os.path.join(experiments,'Summary_accuracy.png')
+    plt.close()
