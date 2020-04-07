@@ -354,7 +354,8 @@ class base_conv(KuraNet):
         self.split = args.split
         self.convs = []
         self.depth = args.depth
-        self.dropout_p = args.dropout_p
+        self.activation = torch.tanh if args.activation == 'tanh' else nn.ReLU()
+        self.dropout = nn.Dropout(args.dropout_p)
 
         start_filts = int(args.start_filts / 2)
         for i in range(self.depth):
@@ -365,7 +366,6 @@ class base_conv(KuraNet):
             
 
         self.convs = nn.ModuleList(self.convs)
-        self.dropout = nn.Dropout(self.dropout_p)
         # self.conv_final = nn.Conv2d(outs, self.out_channels, kernel_size=1, stride=1, padding=0)
         self.out_channels = outs
         if args.intrinsic_frequencies == 'conv':
@@ -386,13 +386,14 @@ class base_conv(KuraNet):
     def forward(self, x):
         x_in = x
         for i, module in enumerate(self.convs):
-            x = torch.tanh(module(x)) #if i < self.depth - 1 else torch.sigmoid(module(x))
+            x = self.activation(module(x)) #if i < self.depth - 1 else torch.sigmoid(module(x))
 
         # x = self.conv_final(x)
-        x = self.dropout(x.reshape(x.shape[0], -1)).reshape(x.shape[0], x.shape[1], x.shape[2])
+
+        x = self.dropout(x.reshape(x.shape[0],-1)).reshape(x.shape[0],x.shape[1],x.shape[2],x.shape[3])
         omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
             
-
+         
         if self.num_global == 0:
             x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
@@ -442,6 +443,8 @@ class base_noKura_conv(nn.Module):
         self.split = args.split
         self.convs = []
         self.depth = args.depth
+        self.activation = torch.tanh if args.activation == 'tanh' else nn.ReLU()
+        self.dropout = nn.Dropout(args.dropout_p)
 
         start_filts = int(args.start_filts / 2)
         for i in range(self.depth):
@@ -462,10 +465,12 @@ class base_noKura_conv(nn.Module):
     def forward(self, x):
         x_in = x
         for i, module in enumerate(self.convs):
-            x = torch.tanh(module(x))# if i < self.depth - 1 else torch.sigmoid(module(x))
+            x = self.activation(module(x))# if i < self.depth - 1 else torch.sigmoid(module(x))
 
         # x = self.conv_final(x)
         # x = self.linear(x.view(x.size(0), -1))
+
+        x = self.dropout(x.reshape(x.shape[0],-1)).reshape(x.shape[0],x.shape[1],x.shape[2],x.shape[3])
         x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2)
 
@@ -507,11 +512,11 @@ class criterion(nn.Module):
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
-            return torch.matmul(losses,
+            return (1 / len(phase_list)) * torch.matmul(losses,
                             torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
         else:
             out = self.classifier.forward(torch.stack(phase_list))
-            loss = torch.stack([self.classifier_loss(out[p], targets)*(p+1)**self.degree for p in range(out.shape[0])]).sum(0)
+            loss = torch.stack([self.classifier_loss(out[p], targets)*(p+1)**self.degree for p in range(out.shape[0])]).mean(0)
             return loss
 
 
@@ -674,7 +679,6 @@ class read_out(nn.Module):
         real = torch.cos(phase)
         imag = torch.sin(phase)
         cplx = []
-        ipdb.set_trace()
         for part in [real, imag]:
             if self.recurrent:  
                 o, h = self.layers(part)

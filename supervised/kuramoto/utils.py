@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 plt.ioff()
 import os
 import torch as tc
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.sampler import RandomSampler
 import numpy as np
 from tqdm import tqdm
 from itertools import permutations
@@ -41,7 +43,7 @@ def read_data(data_inds, path, img_side, group_size, device='cuda', valid=False)
         return tc.tensor(images).float().detach().to(device), tc.tensor(masks).float().detach().to(device)
 
 
-def display(displayer, phase_list, images, masks, clustered_batch, coupling, omega, img_side, group_size, path, name, rf_type, verbose=1):
+def display(displayer, phase_list, images, masks, clustered_batch, coupling, omega, img_side, group_size, path, name, rf_type,verbosity=1):
     # randomly select images to display
     ind = np.random.randint(images.shape[0])
     image = images[ind].cpu().data.numpy()
@@ -56,13 +58,22 @@ def display(displayer, phase_list, images, masks, clustered_batch, coupling, ome
     clustered = clustered_batch[ind]
     displayer.set_phases(np_phase_list)
     displayer.set_masks(mask)
-    if rf_type == 'arange':
-        kura_param_show(coupling, omega, img_side, path, name)
-    if len(phase_list) > 4:
-        displayer.static_evol(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
-        displayer.phase_evol2(path + '/phase_' + name)
-    else:
-        displayer.static_evol2(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
+
+    if verbosity == 0:
+        return
+    elif verbosity == 1:
+        if len(phase_list) > 4:
+            displayer.static_evol(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
+        else:
+            displayer.static_evol2(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
+    elif verbosity == 2:
+        if rf_type == 'arange':
+            kura_param_show(coupling, omega, img_side, path, name)
+        if len(phase_list) > 4:
+            displayer.static_evol(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
+            displayer.phase_evol2(path + '/phase_' + name)
+        else:
+            displayer.static_evol2(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)
     return True
 
 
@@ -123,7 +134,7 @@ def kura_param_show(coupling, omega, img_side, path, name):
         plt. gca().grid(False)
         plt.axis('off')
         plt.colorbar(im)
-        plt.savefig(os.path.join(path,'{}_frequencies_{}'.format(layer_name[o], name)))
+        plt.savefig(path + '{}_frequencies_{}'.format(layer_name[o], name))
         plt.close()
     
     return True

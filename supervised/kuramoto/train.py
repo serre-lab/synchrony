@@ -32,6 +32,7 @@ parser.add_argument('--device', type=str, default='cpu')
 parser.add_argument('--interactive', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--show_every', type=int,default=50)
 parser.add_argument('--eval_interval', type=int,default=1)
+parser.add_argument('--verbosity', type=int,default=1)
 # Model parameters
 parser.add_argument('--model_name', type=str, default='simple_conv')
 parser.add_argument('--in_channels', type=int, default=1)
@@ -40,7 +41,8 @@ parser.add_argument('--depth', type=int, default=2)
 parser.add_argument('--out_channels', type=int, default=32)
 parser.add_argument('--split', type=int, default=4)
 parser.add_argument('--kernel_size', type=str, default=5)
-parser.add_argument('--droput_p', type=float, default=0.0)
+parser.add_argument('--dropout_p', type=float, default=0.0)
+parser.add_argument('--activation', type=str, default='tanh')
 parser.add_argument('--num_cn', type=int, default=8)
 parser.add_argument('--num_global_control', type=int, default=0)
 parser.add_argument('--p_rewire', type=float, default=0.0)
@@ -69,7 +71,7 @@ parser.add_argument('--batch_size', type=int, default=32)
 
 # Learning parameters
 parser.add_argument('--train_epochs', type=int, default=200)
-parser.add_argument('--time_weight', type=int, default=2)
+parser.add_argument('--time_weight', type=int, default=0)
 parser.add_argument('--anneal', type=float, default=0)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--sparsity_weight', type=float, default=1e-5)
@@ -106,7 +108,7 @@ num_test = 1000
 load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name, str(args.segments))
 save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results', args.exp_name)
 model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models', args.exp_name)
-train_path = load_dir + '/train'
+train_path = load_dir + '/training'
 test_path = load_dir + '/test'
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
@@ -173,7 +175,7 @@ op = torch.optim.Adam(params, lr=args.learning_rate)
 
 ######################
 # training pipeline
-norm = np.sum(np.arange(1, args.time_steps + 1) ** 2)
+#norm = np.sum(np.arange(1, args.time_steps + 1) ** 2)
 counter = 0
 PL_train = []
 PL_val = []
@@ -188,7 +190,7 @@ for epoch in range(args.train_epochs):
     PL_epoch = []
     clustering_epoch = []
     model.train()
-    fo    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()    model.train()r step, (train_data, _) in tqdm(enumerate(training_loader)):
+    for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
         label_inds = (((mask.sum(2) > 0)*1).sum(1) == args.segments - 1)*1
@@ -219,7 +221,7 @@ for epoch in range(args.train_epochs):
                 
                 
         tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
-        tavg_loss = tavg_loss.mean() / norm
+        tavg_loss = tavg_loss.mean() #/ norm
         if coupling_train is not None:
             tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
         if omega_train is not None:
@@ -278,7 +280,6 @@ for epoch in range(args.train_epochs):
                     cont_epoch = False
                 else:
                     PL_epoch.append(this_path_length)
-                
     if args.cluster == True:
         clustering_train.append(np.mean(np.array(clustering_epoch))) 
         
@@ -291,7 +292,7 @@ for epoch in range(args.train_epochs):
         loss_history.append(l / (step+1))
         sbd_history.append(sbd / ((1+ (step // args.show_every)) * args.batch_size))
     
-    if (epoch+1) % args.eval_interval == 0:
+    if (epoch) % args.eval_interval == 0:
         l=0
         sbd = 0
         PL_epoch = []
@@ -318,7 +319,7 @@ for epoch in range(args.train_epochs):
                     sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
 
                 tavg_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
-                tavg_loss_test = tavg_loss_test.mean() / norm
+                tavg_loss_test = tavg_loss_test.mean() #/ norm
                 if coupling_test is not None:
                     tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
                 if omega_test is not None:
@@ -366,7 +367,6 @@ for epoch in range(args.train_epochs):
                             cont_epoch = False
                         else:
                             PL_epoch.append(this_path_length)
-                            
             
         if args.cluster == True:
             clustering_val.append(np.mean(np.array(clustering_epoch))) 

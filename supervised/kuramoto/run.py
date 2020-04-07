@@ -7,7 +7,7 @@ import json, ast
 import ipdb
 
 meta_parser = argparse.ArgumentParser()
-meta_parser.add_argument('--name', type=str, default='Multi_MNIST36')
+meta_parser.add_argument('--name', type=str, default='E1')
 meta_args = meta_parser.parse_args()
 
 config = ConfigParser()

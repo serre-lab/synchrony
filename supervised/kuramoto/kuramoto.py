@@ -112,7 +112,6 @@ class Kuramoto(object):
         return phase
 
     def evolution(self, coupling, omega=None, batch=None, hierarchical=False):
-        ipdb.set_trace()
         b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0] 
         dv = coupling[0].device if self.gN > 0 else coupling.device
         phase = self.phase_0(b)
