@@ -1,4 +1,4 @@
-import os, subprocess
+import os, subprocess, glob
 #import nest_asyncio
 #nest_asyncio.apply()
 import nets
@@ -29,6 +29,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--data_name', type=str, default='composite_textures_mini')
 parser.add_argument('--exp_name', type=str, default='four_texture_segment')
 parser.add_argument('--device', type=str, default='cpu')
+parser.add_argument('--pretrained', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--interactive', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--show_every', type=int,default=50)
 parser.add_argument('--eval_interval', type=int,default=1)
@@ -115,6 +116,11 @@ if not os.path.exists(save_dir):
 if not os.path.exists(model_dir):
     os.makedirs(model_dir)
 subprocess.call('rm -rf {}'.format(os.path.join(save_dir, '*')), shell=True)
+
+if args.pretrained is True:
+    model_files = glob.glob(os.path.join(model_dir, '*.pt'))
+    latest_file = max(model_files, key=os.path.getctime)
+    pretrained_model = torch.load(latest_file)
 		
 ######################
 # Load data
@@ -128,27 +134,36 @@ testing_loader = DataLoader(testing_set, batch_size=args.batch_size, shuffle=Tru
 
 #####################
 # Connectivity
-local_connectivity, global_connectivity = \
-    generate_connectivity(args.num_cn, args.img_side, sw=args.sw, 
+if args.pretrained is False:
+    local_connectivity, global_connectivity = \
+        generate_connectivity(args.num_cn, args.img_side, sw=args.sw, 
                           num_global_control=args.num_global_control,
                           p_rewire=args.p_rewire, rf_type=args.rf_type)
 
-local_connectivity = torch.tensor(local_connectivity).long()
+    local_connectivity = torch.tensor(local_connectivity).long()
 
-if global_connectivity is not None:
-    global_connectivity = torch.tensor(global_connectivity).long()
-    connectivity = [local_connectivity, global_connectivity]
+    if global_connectivity is not None:
+        global_connectivity = torch.tensor(global_connectivity).long()
+        connectivity = [local_connectivity, global_connectivity]
+    else:
+        connectivity = local_connectivity
 else:
-    connectivity = local_connectivity
+    connectivity = pretrained_model['connectivity']
 ######################
 # initialization
 if torch.cuda.device_count() > 1 and args.device=='cuda':
     model = nn.DataParallel(nets.load_net(args, connectivity, args.num_global_control)).to(args.device)
+    if args.pretrained:
+        model.load_state_dict(pretrained_model['model_state_dict'])
+        if args.phase_initialization == 'fixed':  model.osci.phase_init('fixed', fixed_phase=pretrained_model['initial_phase'])
     freq_params = model.module.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
     criterion = nn.DataParallel(nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device)).to(args.device)
     classifier_params = criterion.module.classifier.parameters() if args.classify is True else []
 else:
     model = nets.load_net(args, connectivity, args.num_global_control).to(args.device)
+    if args.pretrained:
+        model.load_state_dict(pretrained_model['model_state_dict'])
+        if args.phase_initialization == 'fixed':  model.osci.phase_init('fixed', fixed_phase=pretrained_model['initial_phase'])
     freq_params = model.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
     criterion = nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device).to(args.device)
     classifier_params = criterion.classifier.parameters() if args.classify is True else []
@@ -218,7 +233,6 @@ for epoch in range(args.train_epochs):
                     ex_connectivity = [connectivity[0],connectivity[1]]
                 else:
                     ex_connectivity = connectivity
-                
                 
         tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
         tavg_loss = tavg_loss.mean() #/ norm
@@ -292,7 +306,8 @@ for epoch in range(args.train_epochs):
         loss_history.append(l / (step+1))
         sbd_history.append(sbd / ((1+ (step // args.show_every)) * args.batch_size))
     
-    if (epoch) % args.eval_interval == 0:
+    #if (epoch) % args.eval_interval == 0:
+    if False:
         l=0
         sbd = 0
         PL_epoch = []
@@ -379,11 +394,12 @@ for epoch in range(args.train_epochs):
         epoch_history_test.append(epoch)
 
     # save file s
+
+    save_phase_init = args.phase_initialization if args.phase_initialization != 'fixed' else model.osci.current_phase
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
         'optimizer_state_dict': op.state_dict(),
-        'initial_phase': args.phase_initialization,
+        'initial_phase': save_phase_init,
         'connectivity': connectivity}, model_dir + '/model{}.pt'.format(epoch))
-
     plt.plot(loss_history)
     plt.plot(epoch_history_test, loss_history_test)
     plt.title('Time Averaged Loss')

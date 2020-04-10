@@ -27,6 +27,7 @@ class Kuramoto(object):
                  time_steps = 10,
                  anneal=0.0,
                  phase_initialization = 'random',
+                 fixed_phase = None,
                  walk_step=.1,
                  intrinsic_frequencies = 'zero',
                  connectivity0=8,
@@ -51,14 +52,17 @@ class Kuramoto(object):
         self.device = device
 
         self.connectivity0 = connectivity0
-        self.phase_init(initialization=phase_initialization, walk_step=walk_step)
+        self.phase_init(initialization=phase_initialization, walk_step=walk_step, fixed_phase=fixed_phase)
         self.frequency_init(initialization=intrinsic_frequencies)
 
     def phase_init(self, initialization='random', **kwargs):
         if initialization == 'random':
             self.phase_0 = lambda b : 2*np.pi * torch.rand((self.batch_size, self.N + self.gN)).float()
         elif initialization == 'fixed':
-            self.current_phase = 2*np.pi * torch.rand((1,self.N + self.gN)).float()
+            if kwargs['fixed_phase'] is None:
+                self.current_phase = 2*np.pi * torch.rand((1,self.N + self.gN)).float()
+            else:
+                self.current_phase = kwargs['fixed_phase']
             self.phase_0 = lambda b : self.current_phase.repeat(b, 1)
         elif initialization == 'gaussian':
             self.phase_0 = lambda b : torch.normal(0., .1, (b, self.N + self.gN)).float()
