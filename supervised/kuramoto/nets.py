@@ -9,6 +9,7 @@ from kuramoto import Kuramoto as km
 import losses as ls
 import matplotlib.pyplot as plt
 import matplotlib.lines as lines
+from models.Resnet import conv1x1, conv3x3, BasicBlock
 import ipdb
 
 class KuraNet(nn.Module):
@@ -34,6 +35,10 @@ def load_net(args, connectivity, num_global):
         return base_conv(args, connectivity, num_global)
     elif args.model_name == 'base_noKura_conv':
         return base_noKura_conv(args, connectivity, num_global)
+    elif args.model_name == 'ResNet_Kura':
+        return ResNet_Kura(args, connectivity, num_global)
+    elif args.model_name == 'ResNet_noKura':
+        return ResNet_Kura(args, connectivity, num_global, Kura=False)
     elif args.model_name == 'Unet':
         return Unet(args, connectivity, num_global)
     elif args.model_name == 'Unetbaseline':
@@ -743,14 +748,15 @@ class ComplexConv(nn.Module):
                                  dilation=dilation, groups=groups, bias=bias)
 
     def forward(self,r,i):
-        real = self.conv_re(r) - self.conv_im(i)
-        imaginary = self.conv_re(i) + self.conv_im(r)
+        real = self.conv_re(r) - self.conv_re(i)
+        imaginary = self.conv_re(i) + self.conv_re(r)
         output = torch.stack((real, imaginary), dim=1)
         return output
 
 class read_out_complex(nn.Module):
     def __init__(self,in_channel=1, out_channel=1, kernel_size=3, stride=1, padding=1, dilation=1, bias=True, recurrent=False):
         super(read_out_complex, self).__init__()
+        self.conv = False
         self.recurrent = recurrent
         self.complex_conv = ComplexConv(in_channel, out_channel, kernel_size, stride=stride, padding=padding,dilation=dilation, bias=bias)
         #self.linear = torch.nn.Linear(1234, 2)
@@ -765,9 +771,155 @@ class read_out_complex(nn.Module):
         out = []
         #out = torch.zeros(phase.size()[0],2)
         input = input.unsqueeze(1)
-        for t in range(len(phase)):
-            comp = self.complex_conv(input,phase[t].reshape(input.shape))
-            comp = torch.sqrt(comp[:, 0]**2 + comp[:, 1]**2).sum([1,2,3])
-            out.append(self.act(torch.stack([1-comp,comp]).transpose(1,0)))
+        if self.conv == True:
+            for t in range(len(phase)):
+                comp = self.complex_conv(input,phase[t].reshape(input.shape))
+                comp = torch.sqrt(comp[:, 0]**2 + comp[:, 1]**2).sum([1,2,3])
+                out.append(self.act(torch.stack([1-comp,comp]).transpose(1,0)))
+        else:
+            for t in range(len(phase)):
+                cos = input.reshape(phase[t].shape) * torch.cos(phase[t])
+                sin = input.reshape(phase[t].shape) * torch.sin(phase[t])
+                #plt.imshow(sin[0].reshape(40,40).detach().cpu().numpy())
+                #plt.savefig('test2.png')
+                magnitude = torch.pow(cos.sum(1)**2+sin.sum(1)**2,0.5)/input.shape[0]
+                out.append(torch.stack([1-magnitude, magnitude]).transpose(1, 0))
         return torch.stack(out)
-        
+
+
+class ResNet_Kura(KuraNet):
+    def __init__(self, args, connectivity, num_global, block=BasicBlock, layers=[2,2], pretrained=False, zero_init_residual=False,
+                 groups=1, kernel_size = 3,norm_layer=None, Kura=True):
+        super(ResNet_Kura, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+        self.args = args
+        self.Kura = Kura
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        self._norm_layer = norm_layer
+        self.pretrained = pretrained
+        self.zero_init_residual = zero_init_residual
+        self.inplanes = args.start_filts
+        self.dilation = 1
+        self.groups = groups
+        self.base_width = args.img_side
+        self.kernel_size = kernel_size
+        self.conv1 = nn.Conv2d(1, self.inplanes, kernel_size=self.kernel_size, stride=1, padding=int((self.kernel_size -1)/2),bias=False)
+        self.bn1 = norm_layer(self.inplanes)
+        self.relu = nn.ReLU(inplace=True)
+        self.avgp = 5
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.layer1 = self._make_layer(block, self.inplanes, layers[0])
+        self.layer2 = self._make_layer(block, self.inplanes, layers[1])
+        #self.layer3 = self._make_layer(block, 256, layers[2], stride=2,dilate=replace_stride_with_dilation[1])
+        #self.layer4 = self._make_layer(block, 512, layers[3], stride=2,dilate=replace_stride_with_dilation[2])
+        self.avgpool = nn.AdaptiveAvgPool2d((self.avgp,self.avgp))
+
+        if self.Kura == True:
+            self.fc = nn.Linear(int((self.inplanes*(self.avgp**2))/args.split), int((self.args.img_side**2)/self.args.split * self.args.num_cn))
+        else:
+            self.fc = nn.Linear(int((self.inplanes*(self.avgp**2))/args.split), int((self.args.img_side**2)/self.args.split))
+
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.Conv1d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='linear')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+        # Zero-initialize the last BN in each residual branch,
+        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
+        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
+        if self.zero_init_residual:
+            for m in self.modules():
+                if isinstance(m, Bottleneck):
+                    nn.init.constant_(m.bn3.weight, 0)
+                elif isinstance(m, BasicBlock):
+                    nn.init.constant_(m.bn2.weight, 0)
+
+        for name, param in self.named_parameters():
+            if param.requires_grad is True:
+                print(('{:10} {}'.format('', name)))
+
+
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+        norm_layer = self._norm_layer
+        downsample = None
+        previous_dilation = self.dilation
+        if dilate:
+            self.dilation *= stride
+            stride = 1
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1(self.inplanes, planes * block.expansion, stride),
+                norm_layer(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes*block.expansion, stride, downsample, self.groups,
+                            self.base_width, previous_dilation, norm_layer))
+
+        self.inplanes = planes * block.expansion
+        for _ in range(1, blocks):
+            layers.append(block(self.inplanes, planes*block.expansion, groups=self.groups,
+                                base_width=self.base_width, dilation=self.dilation,
+                                norm_layer=norm_layer))
+
+        return nn.Sequential(*layers)
+
+    def body(self, x):
+        """A ff pass through the model."""
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        #x = self.layer3(x)
+        #x = self.layer4(x)
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        return x
+
+    def forward(self, x):
+        x_in = x
+        x = self.body(x)
+        if self.Kura == True:
+            if self.num_global == 0:
+                x = self.fc(x.reshape(self.args.split*self.args.batch_size,-1)).reshape(-1, self.img_side ** 2,self.args.num_cn)
+                x = x / x.norm(p=2, dim=2).unsqueeze(2)
+                phase_list, coupling, omega = self.evolution(x, batch=x_in, hierarchical=False)
+            return phase_list, coupling, omega
+        else:
+            x = self.fc(x.reshape(self.args.split * self.args.batch_size, -1)).reshape(-1, self.img_side ** 2)
+            return [x], None, None
+
+    @staticmethod
+    def _initialize(self):
+        if self.pretrained:
+            state_dict = load_state_dict_from_url(model_urls[self.arch],
+                                                  progress=False)
+            self.load_state_dict(state_dict)
+        else:
+            for m in self.modules():
+                if isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')  # noqa
+                elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                    nn.init.constant_(m.weight, 1)
+                    nn.init.constant_(m.bias, 0)
+                    nn.init.constant_(m.running_var, 1)
+                    nn.init.constant_(m.running_mean, 0)
+
+            # Zero-initialize the last BN in each residual branch,
+            # so that the residual branch starts with zeros, and each residual block behaves like an identity.  # noqa
+            # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677  # noqa
+            if self.zero_init_residual:
+                for m in self.modules():
+                    if isinstance(m, Bottleneck):
+                        nn.init.constant_(m.bn3.weight, 0)
+                    elif isinstance(m, BasicBlock):
+                        nn.init.constant_(m.bn2.weight, 0)

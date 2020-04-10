@@ -76,6 +76,7 @@ parser.add_argument('--anneal', type=float, default=0)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--sparsity_weight', type=float, default=1e-5)
 parser.add_argument('--entropy_lambda',type=float, default=5e-5)
+parser.add_argument('--freezing_base', type=lambda x:bool(strtobool(x)), default=False)
 
 # loss parameters
 parser.add_argument('--transform', type=str, default='linear')
@@ -86,7 +87,7 @@ parser.add_argument('--entropy_reg',type=lambda x:bool(strtobool(x)), default=Fa
 
 args = parser.parse_args()
 args.kernel_size = [int(k) for k in args.kernel_size.split(',')]
-args.exp_name = ''.join(['DEBUG11_SR_polyominoes_8_free',str(args.model_name),
+args.exp_name = ''.join(['DEBUG17_SR_polyominoes_8_free',str(args.model_name),
                           '_task=',str(args.task),
                           '_entropyreg=',str(args.entropy_reg)+str(args.entropy_lambda),
                           '_num_cn=',str(args.num_cn),
@@ -249,6 +250,7 @@ for epoch in range(args.train_epochs):
     l=0
     correct=0
     sbd = 0
+    orders = None
     cont_epoch = True
     PL_epoch = []
     clustering_epoch = []
@@ -322,7 +324,6 @@ for epoch in range(args.train_epochs):
                 for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
                     clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
                     sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
-                orders = None
                 display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
                     'train{}_{}'.format(epoch,step), args.rf_type, labels, args.segmentation, args.coherence_order, orders, prob)
             else:
@@ -330,6 +331,7 @@ for epoch in range(args.train_epochs):
                     clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
                 if args.coherence_order:
                     orders = universal_order_parameter(phase_list_train[-1], coupling_train, connectivity, args.device, args.num_cn)
+                    orders_history.append(orders.cpu().numpy())
                 display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
                     'train{}_{}'.format(epoch,step), args.rf_type, labels, args.segmentation, args.coherence_order, orders, prob)
 
@@ -388,10 +390,8 @@ for epoch in range(args.train_epochs):
     loss_history.append(l)
     if args.entropy_reg:
         entropy_history.append(e)
-    if args.coherence_order:
-        orders_history.append(orders.cpu().numpy())
     if args.classify == True:
-        accuracy_history.append(float(100*correct.sum()/(args.batch_size*step)))
+        accuracy_history.append(float(100*correct.sum()/(float(args.batch_size*step))))
 
     #############
     #  TESTING  #
@@ -444,6 +444,9 @@ for epoch in range(args.train_epochs):
                 if step % args.show_every == 0:
                     # visualize validation and save
                     # validation example, save its coupling matrix
+                    if args.coherence_order:
+                        orders = universal_order_parameter(phase_list_test[-1], coupling_test, connectivity,
+                                                           args.device, args.num_cn)
                     display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test, args.img_side, args.segments, save_dir,
                     'test{}_{}'.format(epoch, step), args.rf_type, labels, args.segmentation, args.coherence_order, orders)
                 #if step*args.batch_size > num_test:
@@ -494,7 +497,7 @@ for epoch in range(args.train_epochs):
         loss_history_test.append(l)
         sbd_history_test.append(sbd / ((step+1) * args.batch_size))
         epoch_history_test.append(epoch)
-        accuracy_history_test.append(float(100*correct.sum()/(args.batch_size * step)))
+        accuracy_history_test.append(float(100*correct.sum()/(float(args.batch_size*step))))
 
     # save file s
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),

@@ -7,7 +7,7 @@ import subprocess
 import json, ast
 import ipdb
 
-os.environ["CUDA_VISIBLE_DEVICES"]='2'
+os.environ["CUDA_VISIBLE_DEVICES"]='0'
 
 meta_parser = argparse.ArgumentParser()
 meta_parser.add_argument('--name', type=str, default='SAME_DIFF')

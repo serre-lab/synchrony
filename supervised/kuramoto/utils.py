@@ -73,7 +73,7 @@ def display(displayer, phase_list, images, masks, clustered_batch, coupling, ome
         displayer.polar_dist(path, prob, name)
     displayer.set_phases(np_phase_list)
 
-    if rf_type == 'arange':
+    if rf_type == 'arange' and coupling is not None:
         kura_param_show(coupling, omega, img_side, path, name)
 
     if len(phase_list) > 4:
@@ -280,17 +280,21 @@ def universal_order_parameter(phase, coupling, connectivity, dv, num_cn):
     return local_orders.sum((1,2))/adjacency.sum()
 
 def Summary(experiments):
-    experiments_list = os.listdir(experiments)
-    fig, ax = plt.subplots(figsize=(6, 4))
+    experiments_list = [i for i in os.listdir(experiments) if i[0] in ['B','K']]
+    fig, ax = plt.subplots(figsize=(10, 6))
     ax.set_ylim([40,100])
-    colors = plt.get_cmap('hsv')([50*i+100 for i in range(len(experiments))])
+    colors = plt.get_cmap('hsv')([30*i for i in range(len(experiments))])
     for i, path in enumerate(experiments_list):
-        exp_name = path.split('rotation')[1]
-        train_history = np.load(os.path.join(dir,path,'train_accuracy.npy'),allow_pickle=True)
-        valid_history = np.load(os.path.join(dir,path,'valid_accuracy.npy'),allow_pickle=True)
-        ax.plot(np.arange(150),train_history,c=colors[i], linewidth=.8, alpha=0.75, label='train_{}'.format(exp_name))
-        ax.plot(np.arange(10,160,10), valid_history, c=colors[i], linewidth=.8, alpha=0.75, linestyle='dotted',label='valid_{}'.format(exp_name))
+        exp_name = path
+        train_history = np.load(os.path.join(experiments,path,'train_accuracy.npy'),allow_pickle=True)
+        valid_history = np.load(os.path.join(experiments,path,'valid_accuracy.npy'),allow_pickle=True)
+        ax.plot(np.arange(len(train_history)),train_history,c=colors[i], linewidth=.8, alpha=0.75, label=exp_name)
+        if len(valid_history)==15 or len(valid_history)==3:
+            ax.plot(np.arange(10,len(valid_history)*10+10,10), valid_history, c=colors[i], linewidth=.8, alpha=0.75, linestyle='dotted')
+        else:
+            ax.plot(valid_history, c=colors[i], linewidth=.8, alpha=0.75,
+                    linestyle='dotted')
     plt.tight_layout(pad=3.5, w_pad=0.5, h_pad=0.6)
-    plt.legend(loc='lower right')
-    plt.savefig(os.path.join(experiments,'Summary_accuracy.png')
+    plt.legend(loc='lower right', fontsize=5)
+    plt.savefig(os.path.join(experiments,'Summary_accuracy_08-08.png'))
     plt.close()
