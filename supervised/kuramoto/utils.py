@@ -200,9 +200,9 @@ def critic_dist(num_cn):
         return 2
     elif num_cn <= 24:
         return 3
-    elif num_cn <= 45:
+    elif num_cn <= 48:
         return 4
-    elif num_cn <= 68:
+    elif num_cn <= 80:
         return 5
     else:
         raise ValueError("Number is not included, try smaller one")
@@ -214,7 +214,7 @@ def get_cn(num_cn, coord, img_side, sw):
                                 np.stack(list(permutations(np.arange(dist).tolist(), 2)), axis=0)], axis=0)
     dist_list = np.concatenate([dist_list, np.expand_dims((dist_list ** 2).sum(1), axis=1)], axis=1)
     # dist_list = np.sort(dist_list.view('i8, i8, i8'), order=['f2'], axis=0).view(np.int).tolist()
-    dist_list = dist_list[dist_list[:, 1].argsort()]
+    dist_list = dist_list[dist_list[:, 2].argsort()]
     cn = []
     for p in dist_list:
         if 0 in p:
