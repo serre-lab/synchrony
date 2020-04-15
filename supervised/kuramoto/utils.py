@@ -12,7 +12,7 @@ from itertools import permutations
 import ipdb
 
 from sklearn import preprocessing
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.cluster import KMeans, DBSCAN, MeanShift, estimate_bandwidth
 from sklearn.mixture import BayesianGaussianMixture
 
 """
@@ -235,23 +235,22 @@ def get_cn(num_cn, coord, img_side, sw):
         extra = np.ones((num_cn - cn.shape[0])) * (coord[0] + coord[1] * img_side)
     return np.concatenate([cn, extra], axis=0).astype(np.int)
 
-def clustering(phase, n_clusters):
+def clustering(phase, algorithm='ms', max_clusters=3):
     re = np.cos(phase)
     im = np.sin(phase)
     x = [(r,i) for (r,i) in zip(re, im)]
         
     normalized_x = preprocessing.normalize(x)
-
-    km = KMeans(n_clusters=n_clusters)
-    km.fit(normalized_x)
-    labels = km.labels_
-    
-    
-    # db = DBSCAN(eps=0.02).fit(x)
-    # labels = db.labels_
-
-    # bgm = BayesianGaussianMixture(n_components=5, weight_concentration_prior=0.01).fit(x)
-    # bgm = BayesianGaussianMixture(n_components=n_clusters).fit(x)
-    # labels = bgm.predict(x)
-
-    return labels
+    if algorithm == 'km':
+        n_clusters = max_clusters
+        km = KMeans(n_clusters=n_clusters)
+        km.fit(normalized_x)
+        labels = km.labels_
+        return labels, n_clusters
+    elif algorithm == 'ms':
+        bandwidth = estimate_bandwidth(normalized_x, quantile=.5)
+        ms = MeanShift(bandwidth=bandwidth,bin_seeding=True)
+        ms.fit(normalized_x)
+        labels = ms.labels_
+        n_clusters = len(np.unique(labels))
+        return labels, n_clusters

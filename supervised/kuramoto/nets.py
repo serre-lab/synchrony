@@ -506,18 +506,27 @@ class criterion(nn.Module):
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
+                final_loss = losses[-1]
+                loss = torch.stack([losses[p]*(p+1)**self.degree for p in range(len(phase_list))]).mean()
+                return loss, final_loss
+
             else:
                 losses = \
                     ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
-            return (1 / len(phase_list)) * torch.matmul(losses,
-                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
+                final_loss = losses[-1]
+                loss = torch.stack([losses[p]*(p+1)**self.degree for p in range(len(phase_list))]).mean()
+                return loss, final_loss
+            #return (1 / len(phase_list)) * torch.matmul(losses,
+            #                torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
         else:
             out = self.classifier.forward(torch.stack(phase_list))
-            loss = torch.stack([self.classifier_loss(out[p], targets)*(p+1)**self.degree for p in range(out.shape[0])]).mean(0)
-            return loss
+            losses = torch.stack([self.classifier_loss(out[p], targets)*(p+1)**self.degree for p in range(out.shape[0])])
+            final_loss = losses[-1]
+            loss = losses.mean(0)
+            return loss, final_loss
 
 
 class regularizer(nn.Module):

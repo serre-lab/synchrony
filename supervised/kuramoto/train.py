@@ -1,4 +1,4 @@
-import os, subprocess, glob
+import os, subprocess
 #import nest_asyncio
 #nest_asyncio.apply()
 import nets
@@ -29,8 +29,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--data_name', type=str, default='composite_textures_mini')
 parser.add_argument('--exp_name', type=str, default='four_texture_segment')
 parser.add_argument('--device', type=str, default='cpu')
-parser.add_argument('--pretrained', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--interactive', type=lambda x:bool(strtobool(x)), default=False)
+parser.add_argument('--pretrained', type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--show_every', type=int,default=50)
 parser.add_argument('--eval_interval', type=int,default=1)
 parser.add_argument('--verbosity', type=int,default=1)
@@ -76,7 +76,7 @@ parser.add_argument('--time_weight', type=int, default=0)
 parser.add_argument('--anneal', type=float, default=0)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--sparsity_weight', type=float, default=1e-5)
-
+parser.add_argument('--clustering_algorithm',type=str,default='km')
 # loss parameters
 parser.add_argument('--transform', type=str, default='linear')
 parser.add_argument('--classify',type=lambda x:bool(strtobool(x)), default=False)
@@ -102,8 +102,6 @@ else:
     num_devices=1
  ######################
 # parameters
-num_test = 1000
-
 ######################
 # path
 load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name, str(args.segments))
@@ -170,8 +168,13 @@ else:
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
 
 loss_history = []
+final_loss_history = []
+ns_history=[]
 sbd_history=[]
 loss_history_test = []
+final_loss_history_test = []
+#long_loss_history_test = []
+ns_history_test=[]
 sbd_history_test=[]
 epoch_history_test=[]
 coupling_history = []
@@ -198,17 +201,22 @@ clustering_train = []
 clustering_val = []
 for epoch in range(args.train_epochs):
     print('Epoch: {}'.format(epoch))
-
     l=0
+    fl=0
+    ns=0
     sbd = 0
     cont_epoch = True
     PL_epoch = []
     clustering_epoch = []
     model.train()
+
+    if not 'noKura' in args.model_name:
+        model.osci.time_steps = args.time_steps
     for step, (train_data, _) in tqdm(enumerate(training_loader)):
         batch = torch.tensor(train_data[:, 0, ...]).to(args.device).float()
         mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(args.device).float()
-        label_inds = (((mask.sum(2) > 0)*1).sum(1) == args.segments - 1)*1
+        num_segments = ((mask.sum(2) > 0)*1).sum(1)
+        label_inds = (num_segments == args.segments - 1)*1
         labels = torch.zeros((args.batch_size,2)).to(args.device).scatter_(1,label_inds.unsqueeze(1),1.0)
 
         op.zero_grad()
@@ -234,26 +242,29 @@ for epoch in range(args.train_epochs):
                 else:
                     ex_connectivity = connectivity
                 
-        tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
-        tavg_loss = tavg_loss.mean() #/ norm
+        tavg_loss, final_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
         if coupling_train is not None:
             tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
         if omega_train is not None:
             tavg_loss += args.sparsity_weight * torch.abs(omega_train).mean()
         l+=tavg_loss.data.cpu().numpy()
+        fl+= final_loss.data.cpu().numpy()
         tavg_loss.backward()
         op.step()
        
         # visualize training
         clustered_batch = []
+        ns_batch = []
         if step % args.show_every == 0:
             for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
+                clustered_img, n_clusters = clustering(sample_phase, max_clusters=args.segments)
+                clustered_batch.append(clustered_img)
+                ns_batch.append(n_clusters)
                 sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+            ns+=((np.array(ns_batch)==num_segments.cpu().numpy())*1).mean()
             display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
                 'train{}_{}'.format(epoch,step), args.rf_type)
-
-        if step % 600 == 0:
+        if step % 600 == 0 and args.graph_stats:
             NP_initialized = False
             if args.one_image:
                 #import pdb;pdb.set_trace()
@@ -294,33 +305,40 @@ for epoch in range(args.train_epochs):
                     cont_epoch = False
                 else:
                     PL_epoch.append(this_path_length)
-    if args.cluster == True:
+
+    if args.cluster == True and args.graph_stats:
         clustering_train.append(np.mean(np.array(clustering_epoch))) 
         
-    if np.logical_and(args.path_length == True, cont_epoch == True):
+    if args.path_length == True and cont_epoch == True and args.graph_stats == True:
         PL_train.append(np.mean(np.array(PL_epoch)))
     elif args.path_length==True: 
         PL_train.append(-1)
             
     if step > 0:
         loss_history.append(l / (step+1))
+        final_loss_history.append(fl / (step+1))
+        ns_history.append(ns / (step+1))
         sbd_history.append(sbd / ((1+ (step // args.show_every)) * args.batch_size))
-    
-    #if (epoch) % args.eval_interval == 0:
-    if False:
+   
+    # Testing 
+    if (epoch) % args.eval_interval == 0:
         l=0
+        fl=0
+        ll=0
+        ns=0
         sbd = 0
         PL_epoch = []
         clustering_epoch = []
 
-        # Testing
         model.eval()
         with torch.no_grad():
             for step, (test_data, _) in tqdm(enumerate(testing_loader)):
                 # cross-validation
                 batch = test_data[:,  0, ...].float().to(args.device)
                 mask = test_data[:, 1:, ...].reshape(-1, args.segments, args.img_side * args.img_side).float().to(args.device)
-                label_inds = (((mask.sum(2) > 0)*1).sum(1) == args.segments - 1)*1
+
+                num_segments = ((mask.sum(2) > 0)*1).sum(1)
+                label_inds = (num_segments == args.segments - 1)*1
                 labels = torch.zeros((args.batch_size,2)).to(args.device).scatter_(1,label_inds.unsqueeze(1),1.0)
 
                 phase_list_test, coupling_test, omega_test = model(batch.unsqueeze(1))
@@ -329,17 +347,22 @@ for epoch in range(args.train_epochs):
                 colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
 
                 clustered_batch = []
+                ns_batch = []
                 for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                    clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
+                    clustered_img, n_clusters = clustering(sample_phase, max_clusters=args.segments)
+                    ns_batch.append(n_clusters)
+                    clustered_batch.append(clustered_img)
                     sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+                ns+=((np.array(ns_batch)==num_segments.cpu().numpy())*1).mean()
 
-                tavg_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
-                tavg_loss_test = tavg_loss_test.mean() #/ norm
+                tavg_loss_test, final_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
                 if coupling_test is not None:
                     tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
                 if omega_test is not None:
                     tavg_loss_test += args.sparsity_weight * torch.abs(omega_test).mean()
                 l+=tavg_loss_test.data.cpu().numpy()
+                fl+= final_loss_test.data.cpu().numpy()
+                #ll+= long_loss_test.data.cpu().numpy()
                 
                 if step % args.show_every == 0:
                     # visualize validation and save
@@ -348,7 +371,7 @@ for epoch in range(args.train_epochs):
                     'test{}_{}'.format(epoch, step), args.rf_type)
                 #if step*args.batch_size > num_test:
                 #    break
-                if step % 600 == 0:
+                if step % 600 == 0 and args.graph_stats:
                     NP_initialized = False
                     if args.one_image:
                         phase_list_test, coupling_test, omega_test = model(ex_image.unsqueeze(0).unsqueeze(0).repeat(args.batch_size,1,1,1))
@@ -383,29 +406,49 @@ for epoch in range(args.train_epochs):
                         else:
                             PL_epoch.append(this_path_length)
             
-        if args.cluster == True:
+        if args.cluster == True and args.graph_stats:
             clustering_val.append(np.mean(np.array(clustering_epoch))) 
-        if np.logical_and(args.path_length == True, cont_epoch == True):
+        if args.path_length == True and cont_epoch == True and args.graph_stats == True:
             PL_val.append(np.mean(np.array(PL_epoch)))
-        elif args.path_length==True: 
+        elif args.path_length==True and args.graph_stats: 
             PL_val.append(-1)
         loss_history_test.append(l / (step+1))
+        final_loss_history_test.append(fl / (step + 1))
+        #long_loss_history_test.append(ll / (step + 1))
+        ns_history_test.append(ns / (step+1))
         sbd_history_test.append(sbd / ((step+1) * args.batch_size))
         epoch_history_test.append(epoch)
 
     # save file s
 
-    save_phase_init = args.phase_initialization if args.phase_initialization != 'fixed' else model.osci.current_phase
+    if not 'noKura' in args.model_name:
+        save_phase_init = args.phase_initialization if args.phase_initialization != 'fixed' else model.osci.current_phase
+    else:
+        save_phase_init = None
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
         'optimizer_state_dict': op.state_dict(),
         'initial_phase': save_phase_init,
         'connectivity': connectivity}, model_dir + '/model{}.pt'.format(epoch))
+
     plt.plot(loss_history)
     plt.plot(epoch_history_test, loss_history_test)
     plt.title('Time Averaged Loss')
     plt.legend(['train', 'valid'])
     plt.savefig(save_dir + '/loss' + '.png')
     plt.close()
+
+    plt.plot(final_loss_history)
+    plt.plot(epoch_history_test, final_loss_history_test)
+    plt.title('Time Averaged Loss')
+    plt.legend(['final_train', 'final_valid'])
+    plt.savefig(save_dir + '/final_loss' + '.png')
+    plt.close()
+
+    #plt.plot(epoch_history_test, long_loss_history_test)
+    #plt.title('Time Averaged Loss')
+    #plt.legend(['long_valid'])
+    #plt.savefig(save_dir + '/long_valid_loss' + '.png')
+    #plt.close()
 
     plt.plot(sbd_history)
     plt.plot(epoch_history_test, sbd_history_test)
@@ -414,11 +457,23 @@ for epoch in range(args.train_epochs):
     plt.savefig(save_dir + '/sbd' + '.png')
     plt.close()
 
+    plt.plot(ns_history)
+    plt.plot(epoch_history_test, ns_history_test)
+    plt.title('Estimaged segments')
+    plt.legend(['train', 'valid'])
+    plt.savefig(save_dir + '/ns' + '.png')
+    plt.close()
+
     np.save(os.path.join(save_dir, 'train_loss.npy'), np.array(loss_history))
     np.save(os.path.join(save_dir, 'valid_loss.npy'), np.array(loss_history_test))
     np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_history))
     np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_history_test))
+    np.save(os.path.join(save_dir, 'train_ns.npy'), np.array(ns_history))
+    np.save(os.path.join(save_dir, 'valid_ns.npy'), np.array(ns_history_test))
     np.save(os.path.join(save_dir, 'valid_epoch.npy'), np.array(epoch_history_test))
+    np.save(os.path.join(save_dir, 'train_final_loss.npy'), np.array(final_loss_history))
+    np.save(os.path.join(save_dir, 'valid_final_loss.npy'), np.array(final_loss_history_test))
+
    
     # ipdb.set_trace() 
     # sbd_diff = np.abs(np.diff(sbd_history_test[-5:])).mean()
@@ -439,3 +494,4 @@ for epoch in range(args.train_epochs):
         plt.legend(['Train', 'Validation'])
         plt.savefig(save_dir +'/clusteringcoefficient.png')
         plt.close()
+
