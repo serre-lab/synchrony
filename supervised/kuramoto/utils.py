@@ -13,6 +13,7 @@ import ipdb
 
 from sklearn import preprocessing
 from sklearn.cluster import KMeans, DBSCAN, MeanShift, estimate_bandwidth
+from scipy.spatial.distance import pdist,squareform
 from sklearn.mixture import BayesianGaussianMixture
 
 """
@@ -239,18 +240,29 @@ def clustering(phase, algorithm='ms', max_clusters=3):
     re = np.cos(phase)
     im = np.sin(phase)
     x = [(r,i) for (r,i) in zip(re, im)]
-        
-    normalized_x = preprocessing.normalize(x)
+    
     if algorithm == 'km':
+        normalized_x = preprocessing.normalize(x)
+
         n_clusters = max_clusters
         km = KMeans(n_clusters=n_clusters)
         km.fit(normalized_x)
         labels = km.labels_
         return labels, n_clusters
     elif algorithm == 'ms':
+        normalized_x = preprocessing.normalize(x)
+
         bandwidth = estimate_bandwidth(normalized_x, quantile=.5)
         ms = MeanShift(bandwidth=bandwidth,bin_seeding=True)
         ms.fit(normalized_x)
         labels = ms.labels_
+        n_clusters = len(np.unique(labels))
+        return labels, n_clusters
+    elif algorithm == 'dbscan':
+        cosine_dist = squareform(pdist(x, 'cosine'))
+        
+        threshold = 0.01
+        db=DBSCAN(eps=threshold, metric='precomputed').fit(cosine_dist)
+        labels = db.labels_
         n_clusters = len(np.unique(labels))
         return labels, n_clusters

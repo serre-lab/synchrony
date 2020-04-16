@@ -257,7 +257,7 @@ for epoch in range(args.train_epochs):
         ns_batch = []
         if step % args.show_every == 0:
             for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                clustered_img, n_clusters = clustering(sample_phase, max_clusters=args.segments)
+                clustered_img, n_clusters = clustering(sample_phase, algorithm=args.clustering_algorithm,max_clusters=args.segments)
                 clustered_batch.append(clustered_img)
                 ns_batch.append(n_clusters)
                 sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
@@ -349,7 +349,7 @@ for epoch in range(args.train_epochs):
                 clustered_batch = []
                 ns_batch = []
                 for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                    clustered_img, n_clusters = clustering(sample_phase, max_clusters=args.segments)
+                    clustered_img, n_clusters = clustering(sample_phase, algorithm=args.clustering_algorithm, max_clusters=args.segments)
                     ns_batch.append(n_clusters)
                     clustered_batch.append(clustered_img)
                     sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
