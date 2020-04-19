@@ -7,13 +7,17 @@ import torch as tc
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import RandomSampler
 import numpy as np
+import math
 from tqdm import tqdm
-from itertools import permutations
+from itertools import permutations, combinations, product
 import ipdb
+import sys
 
 from sklearn import preprocessing
-from sklearn.cluster import KMeans, DBSCAN, MeanShift, estimate_bandwidth
+from sklearn.cluster import KMeans, DBSCAN, AffinityPropagation
+from scipy.spatial.distance import pdist, squareform
 from sklearn.mixture import BayesianGaussianMixture
+from sklearn.neighbors import BallTree
 
 """
 1. Read a batch of data (specified by a list of indices) through numpy.load
@@ -241,6 +245,7 @@ def clustering(phase, algorithm='ms', max_clusters=3):
     x = [(r,i) for (r,i) in zip(re, im)]
         
     normalized_x = preprocessing.normalize(x)
+    ipdb.set_trace()
     if algorithm == 'km':
         n_clusters = max_clusters
         km = KMeans(n_clusters=n_clusters)
@@ -248,9 +253,87 @@ def clustering(phase, algorithm='ms', max_clusters=3):
         labels = km.labels_
         return labels, n_clusters
     elif algorithm == 'ms':
-        bandwidth = estimate_bandwidth(normalized_x, quantile=.5)
-        ms = MeanShift(bandwidth=bandwidth,bin_seeding=True)
-        ms.fit(normalized_x)
-        labels = ms.labels_
+        raise Warning('Warning! Mean shift has not been debugged!')
+        #bandwidth = estimate_bandwidth(normalized_x, quantile=.5)
+        bandwidth = 2*np.pi/12
+        phase %= 2*np.pi
+        phase = phase.reshape(-1,1)
+        phase_grid = np.linspace(0,2*np.pi, 12)
+        centers = np.diff(phase_grid)[0]/2 + phase_grid[:-1]
+        num, edges = np.histogram(phase, phase_grid)
+        seeds = centers[num> phase.shape[0] / 24.].reshape(-1,1)
+        labels = mean_shift(phase, bandwidth, seeds, gaussian_kernel_update, metric=cosine_distance)
+        n_clusters = len(np.unique(labels))
+     elif algorithm == 'dbscan':
+        cosine_dist = squareform(pdist(x, 'cosine'))
+        threshold = 0.01
+        db=DBSCAN(eps=threshold, metric='precomputed').fit(cosine_dist)
+        labels = db.labels_
         n_clusters = len(np.unique(labels))
         return labels, n_clusters
+    elif algorithm == 'ap':
+        affinity = .5*(np.cos(np.expand_dims(phase,1) - np.expand_dims(phase,0)) - 1)
+        ipdb.set_trace()
+        af = AffinityPropagation(affinity='precomputed').fit(affinity)
+        labels = af.labels_
+        n_clusters = len(af.cluster_centers_indices_)
+        return labels, n_clusters
+    else:
+        raise ValueError('Please use a recognized clustering algorithm.')
+
+def mean_shift(X, bandwidth, seeds, kernel_update_function, max_iterations=300, metric=None):
+    if metric is None: metric=circle_distance
+    n_points, n_features = X.shape
+    stop_thresh = 1e-3 * bandwidth  # when mean has converged                                                                                                               
+    window_scalar = 3 if kernel_update_function == gaussian_kernel_update else 1
+    cluster_centers = []
+    ball_tree = BallTree(X, metric='pyfunc', func=metric)  # to efficiently look up nearby points
+
+    # For each seed, climb gradient until convergence or max_iterations                                                                                                     
+    for weighted_mean in seeds:
+         completed_iterations = 0
+         while True:
+             points_within = X[ball_tree.query_radius([weighted_mean], bandwidth*window_scalar)[0]]
+             old_mean = weighted_mean  # save the old mean                                                                                                                  
+             if len(points_within) == 0:
+                 ipdb.set_trace()
+             weighted_mean = kernel_update_function(old_mean, points_within, bandwidth, metric=metric)
+             converged = np.abs(weighted_mean - old_mean) < stop_thresh
+             if converged or completed_iterations == max_iterations:
+                 cluster_centers.append(weighted_mean)
+                 break
+             completed_iterations += 1
+    # post processing
+    preprocessed_centers = [c for c in cluster_centers]
+    for pair in combinations(preprocessed_centers,2):
+        cluster1, cluster2 = pair
+        if metric(cluster1, cluster2) < bandwidth:
+            p1 = len(X[ball_tree.query_radius([cluster1], bandwidth*window_scalar)[0]])
+            p2 = len(X[ball_tree.query_radius([cluster2], bandwidth*window_scalar)[0]])
+            if p1 < p2:
+                if cluster1 not in cluster_centers:
+                    continue
+                cluster_centers.remove(cluster1)
+            else:
+                if cluster2 not in cluster_centers:
+                    continue
+                cluster_centers.remove(cluster2)
+    labels = np.zeros_like(X)
+    for c, cluster in enumerate(cluster_centers):
+        labels[ball_tree.query_radius([weighted_mean], bandwidth*window_scalar)[0]] =c
+    return labels
+
+def gaussian_kernel_update(x, points, bandwidth, metric=None):
+    if metric is None: metric=circle_distance
+    distances = metric(points, x)
+    weights = np.exp(-1 * (distances ** 2 / bandwidth ** 2))
+    return np.sum(points * weights, axis=0) / np.sum(weights)
+
+def flat_kernel_update(x, points, bandwidth):
+    return np.mean(points, axis=0)
+
+def cosine_distance(x, y):
+    return .5*(-1*np.cos(x-y) + 1)
+
+def circle_distance(x,y):
+    return np.where(np.abs(x-y) < np.pi, np.abs(x-y), 2*np.pi - np.abs(x-y))

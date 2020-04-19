@@ -19,6 +19,7 @@ import ipdb
 import warnings
 warnings.filterwarnings('ignore')
 from NetProp import NetProp 
+import glob
 """
 DataParallel
 kuramoto and loss_func_ex are integrated into an nn.Module to operate parallel calculation
@@ -251,13 +252,13 @@ for epoch in range(args.train_epochs):
         fl+= final_loss.data.cpu().numpy()
         tavg_loss.backward()
         op.step()
-       
+      
         # visualize training
         clustered_batch = []
         ns_batch = []
-        if step % args.show_every == 0:
+        if step % args.show_every == 0 and args.show_every > 0:
             for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                clustered_img, n_clusters = clustering(sample_phase, max_clusters=args.segments)
+                clustered_img, n_clusters = clustering(sample_phase, max_clusters=args.segments, algorithm=args.clustering_algorithm)
                 clustered_batch.append(clustered_img)
                 ns_batch.append(n_clusters)
                 sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
@@ -348,12 +349,13 @@ for epoch in range(args.train_epochs):
 
                 clustered_batch = []
                 ns_batch = []
-                for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                    clustered_img, n_clusters = clustering(sample_phase, max_clusters=args.segments)
-                    ns_batch.append(n_clusters)
-                    clustered_batch.append(clustered_img)
-                    sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
-                ns+=((np.array(ns_batch)==num_segments.cpu().numpy())*1).mean()
+                if args.show_every > 0:
+                    for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
+                        clustered_img, n_clusters = clustering(sample_phase, algorithm = args.clustering_algorithm, max_clusters=args.segments)
+                        ns_batch.append(n_clusters)
+                        clustered_batch.append(clustered_img)
+                        sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+                    ns+=((np.array(ns_batch)==num_segments.cpu().numpy())*1).mean()
 
                 tavg_loss_test, final_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
                 if coupling_test is not None:
@@ -364,7 +366,7 @@ for epoch in range(args.train_epochs):
                 fl+= final_loss_test.data.cpu().numpy()
                 #ll+= long_loss_test.data.cpu().numpy()
                 
-                if step % args.show_every == 0:
+                if step % args.show_every == 0 and args.show_every > 0:
                     # visualize validation and save
                     # validation example, save its coupling matrix
                     display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test, args.img_side, args.segments, save_dir, 
@@ -414,9 +416,10 @@ for epoch in range(args.train_epochs):
             PL_val.append(-1)
         loss_history_test.append(l / (step+1))
         final_loss_history_test.append(fl / (step + 1))
-        #long_loss_history_test.append(ll / (step + 1))
-        ns_history_test.append(ns / (step+1))
-        sbd_history_test.append(sbd / ((step+1) * args.batch_size))
+
+        if args.show_every > 0:
+            ns_history_test.append(ns / (step+1))
+            sbd_history_test.append(sbd / ((step+1) * args.batch_size))
         epoch_history_test.append(epoch)
 
     # save file s
@@ -428,7 +431,7 @@ for epoch in range(args.train_epochs):
     torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(),
         'optimizer_state_dict': op.state_dict(),
         'initial_phase': save_phase_init,
-        'connectivity': connectivity}, model_dir + '/model{}.pt'.format(epoch))
+        'connectivity': connectivity}, model_dir + '/model.pt')
 
     plt.plot(loss_history)
     plt.plot(epoch_history_test, loss_history_test)
@@ -444,41 +447,31 @@ for epoch in range(args.train_epochs):
     plt.savefig(save_dir + '/final_loss' + '.png')
     plt.close()
 
-    #plt.plot(epoch_history_test, long_loss_history_test)
-    #plt.title('Time Averaged Loss')
-    #plt.legend(['long_valid'])
-    #plt.savefig(save_dir + '/long_valid_loss' + '.png')
-    #plt.close()
+    if args.show_every > 0:
+        plt.plot(sbd_history)
+        plt.plot(epoch_history_test, sbd_history_test)
+        plt.title('Symmetric Best Dice')
+        plt.legend(['train', 'valid'])
+        plt.savefig(save_dir + '/sbd' + '.png')
+        plt.close()
 
-    plt.plot(sbd_history)
-    plt.plot(epoch_history_test, sbd_history_test)
-    plt.title('Symmetric Best Dice')
-    plt.legend(['train', 'valid'])
-    plt.savefig(save_dir + '/sbd' + '.png')
-    plt.close()
+        plt.plot(ns_history)
+        plt.plot(epoch_history_test, ns_history_test)
+        plt.title('Estimaged segments')
+        plt.legend(['train', 'valid'])
+        plt.savefig(save_dir + '/ns' + '.png')
+        plt.close()
 
-    plt.plot(ns_history)
-    plt.plot(epoch_history_test, ns_history_test)
-    plt.title('Estimaged segments')
-    plt.legend(['train', 'valid'])
-    plt.savefig(save_dir + '/ns' + '.png')
-    plt.close()
+        np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_history))
+        np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_history_test))
+        np.save(os.path.join(save_dir, 'train_ns.npy'), np.array(ns_history))
+        np.save(os.path.join(save_dir, 'valid_ns.npy'), np.array(ns_history_test))
 
     np.save(os.path.join(save_dir, 'train_loss.npy'), np.array(loss_history))
     np.save(os.path.join(save_dir, 'valid_loss.npy'), np.array(loss_history_test))
-    np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_history))
-    np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_history_test))
-    np.save(os.path.join(save_dir, 'train_ns.npy'), np.array(ns_history))
-    np.save(os.path.join(save_dir, 'valid_ns.npy'), np.array(ns_history_test))
     np.save(os.path.join(save_dir, 'valid_epoch.npy'), np.array(epoch_history_test))
     np.save(os.path.join(save_dir, 'train_final_loss.npy'), np.array(final_loss_history))
     np.save(os.path.join(save_dir, 'valid_final_loss.npy'), np.array(final_loss_history_test))
-
-   
-    # ipdb.set_trace() 
-    # sbd_diff = np.abs(np.diff(sbd_history_test[-5:])).mean()
-    # if args.early_stopping and sbd_history_test[-1] > .98 or sbd_diff < .05:
-    #     break
 
     if args.path_length == True:
         plt.plot(np.array(PL_train))
