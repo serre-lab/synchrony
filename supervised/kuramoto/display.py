@@ -402,14 +402,17 @@ class displayer(object):
         axes[0].axis('off')
         axes[0].title.set_text('input')
         for i in range(5):
-            axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
+            
             axes[i + 1].axis('off')
             if i == 4:
+                axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=len(np.unique(phase_list[i]))-1)
                 axes[i + 1].title.set_text('quantized')
-            elif i == 3:
-                axes[i + 1].title.set_text('last_step')
             else:
-                axes[i + 1].title.set_text('step' + str(int(i * interval)))
+                axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
+                if i == 3:
+                    axes[i + 1].title.set_text('last_step')
+                else:
+                    axes[i + 1].title.set_text('step' + str(int(i * interval)))
         
         axes[6].imshow(np.reshape(mask, (nrows, ncols)), cmap='gray')
         axes[6].axis('off')

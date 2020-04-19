@@ -243,10 +243,9 @@ def clustering(phase, algorithm='ms', max_clusters=3):
     re = np.cos(phase)
     im = np.sin(phase)
     x = [(r,i) for (r,i) in zip(re, im)]
-        
-    normalized_x = preprocessing.normalize(x)
-    ipdb.set_trace()
     if algorithm == 'km':
+        normalized_x = preprocessing.normalize(x)
+
         n_clusters = max_clusters
         km = KMeans(n_clusters=n_clusters)
         km.fit(normalized_x)
