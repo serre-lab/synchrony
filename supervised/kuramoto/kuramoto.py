@@ -2,8 +2,10 @@ import numpy as np
 import copy
 from tqdm import tqdm
 import torch
+import torch.nn as nn
 import nets
 import ipdb
+from torchdiffeq import odeint_adjoint as odeint
 
 """
 DEFAULTS
@@ -15,6 +17,7 @@ intrinsic frequencies: 0s
 coupling: 0s
 no printing & recording intermediate phases
 """
+
 class Kuramoto(object):
     """
     Add device choice,
@@ -32,7 +35,7 @@ class Kuramoto(object):
                  connectivity0=8,
                  update_rate=0.1,
                  update_fn_number = 3,
-                 device='cpu'):
+                 device='cpu', method='odeint'):
   
         self.N = oscillator_number
         self.gN = num_global
@@ -41,6 +44,7 @@ class Kuramoto(object):
         self.eps = update_rate
         self.anneal = anneal
         self.time_steps = time_steps
+        self.integration_time = torch.linspace(0., 20., 200).float()
 
         if update_fn_number == 1:
             self.update = self._update1
@@ -153,6 +157,55 @@ class Kuramoto(object):
     def eps_anneal(self, i):
         self.eps = self.eps - self.anneal * float(i) * self.eps / self.time_steps
         return True
+
+    #Defines the dynamic and solve the sytem for the specified self.integration_time.
+    def ODE_evolution(self, coupling, rtol=1e-6, atol=1e-12, method='euler', options=None):
+        b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0]
+        dv = coupling[0].device if self.gN > 0 else coupling.device
+        phase_init = self.phase_0(b).to(dv)
+
+        batch_lconnectivity = self.connectivity0.unsqueeze(0).repeat(coupling.shape[0], 1, 1).to(dv)
+        couplings = torch.zeros(phase_init.shape[0], phase_init.shape[1], phase_init.shape[1]).to(dv).scatter_(dim=2,
+                                                                                               index=batch_lconnectivity,
+                                                                                               src=coupling)
+
+        #ODE dynamic is updated with coupling parameters and integrated through solver
+        self.ODEDynamic.update(couplings)
+        phase_list = odeint(self.ODEDynamic, phase_init.flatten(), self.integration_time.type_as(phase_init), rtol, atol, method, options)
+        return list(phase_list.reshape(self.integration_time.shape[0],b,-1)), couplings
+
+    #methods to track number of calls to the solver
+    @property
+    def nfe(self):
+        return self.ODEDynamic.nfe
+
+    @nfe.setter
+    def nfe(self, value):
+        self.ODEDynamic.nfe = value
+
+
+
+class ODEDynamic(nn.Module):
+    """
+    torch.nn.Module that defines the infinitesimal evolution of the ODE : df/dt = module(t,\theta)
+    - Handles batchs of images by flattening the bacth dim and treat everything as a single ODE
+    - Requires the update of the couplings parameters at every call to get the gradient d(couplings)/dL
+    """
+    def __init__(self, args):
+        super(ODEDynamic, self).__init__()
+        #self.couplings = torch.nn.Parameter(torch.Tensor([args.batch_size,args.img_side,args.img_side]),requires_grad=True)
+        self.nfe = 0
+
+    def update(self, couplings):
+        self.couplings = torch.nn.Parameter(couplings,requires_grad=True)
+
+    def forward(self, t, phase):
+        phase = phase.reshape(self.couplings.shape[0],-1).float()
+        n = torch.abs(torch.sign(self.couplings)).sum(2)
+        delta_phase = (torch.bmm(self.couplings, torch.sin(phase).unsqueeze(2).float()).squeeze(2) * torch.cos(phase) -
+                      torch.bmm(self.couplings, torch.cos(phase).unsqueeze(2).float()).squeeze(2) * torch.sin(phase)) / n
+        self.nfe+=1
+        return delta_phase.flatten()
 
 if __name__ == '__main__':
     print('numpy version kuramoto dynamics simulation tool\n')

@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
 import display as disp
+from torch.autograd import grad
 import sys
 from distutils.util import strtobool
 from losses import calc_sbd
@@ -44,13 +45,14 @@ parser.add_argument('--num_cn', type=int, default=8)
 parser.add_argument('--num_global_control', type=int, default=0)
 parser.add_argument('--p_rewire', type=float, default=0.0)
 parser.add_argument('--rf_type', type=str, default='arange')
-parser.add_argument('--phase_initialization', type=str, default='random')
+parser.add_argument('--phase_initialization', type=str, default='fixed')
 parser.add_argument('--intrinsic_frequencies', type=str, default='zero')
 parser.add_argument('--update_rate', type=float, default=1.6)
 parser.add_argument('--sw', type=lambda x:bool(strtobool(x)),default=False)
 parser.add_argument('--time_steps', type=int, default=8)
 parser.add_argument('--record_steps', type=int, default=8)
 parser.add_argument('--walk_step', type=float, default=.1)
+parser.add_argument('--ode_train', type=lambda x:bool(strtobool(x)),default=False)
 
 #graph stats
 parser.add_argument('--graph_stats', type=lambda x:bool(strtobool(x)), default=False)
@@ -77,9 +79,11 @@ parser.add_argument('--sparsity_weight', type=float, default=1e-5)
 parser.add_argument('--transform', type=str, default='linear')
 parser.add_argument('--classify',type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--recurrent_classifier',type=lambda x:bool(strtobool(x)), default=False)
+parser.add_argument('--entropy_reg',type=lambda x:bool(strtobool(x)), default=False)
 
 args = parser.parse_args()
 args.kernel_size = [int(k) for k in args.kernel_size.split(',')]
+
 
 
 if args.interactive:
@@ -103,8 +107,8 @@ num_test = 1000
 ######################
 # path
 load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name, str(args.segments))
-save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results', args.exp_name)
-model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models', args.exp_name)
+save_dir = os.path.join('/media/data/mchalvid/osci_save_v4_ODE/results', args.exp_name)
+model_dir = os.path.join('/media/data/mchalvid/osci_save_v4_ODE/models', args.exp_name)
 train_path = load_dir + '/train'
 test_path = load_dir + '/test'
 if not os.path.exists(save_dir):
@@ -215,16 +219,31 @@ for epoch in range(args.train_epochs):
                     ex_connectivity = [connectivity[0],connectivity[1]]
                 else:
                     ex_connectivity = connectivity
-                
-                
-        tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False,targets=labels)
+
+        tavg_loss = criterion(phase_list_train[-1*args.record_steps:], mask, args.transform, valid=False, targets=labels)
         tavg_loss = tavg_loss.mean() / norm
+        print('loss',tavg_loss)
+
         if coupling_train is not None:
             tavg_loss += args.sparsity_weight * torch.abs(coupling_train).mean()
         if omega_train is not None:
             tavg_loss += args.sparsity_weight * torch.abs(omega_train).mean()
         l+=tavg_loss.data.cpu().numpy()
-        tavg_loss.backward()
+
+        tavg_loss.backward(retain_graph=True)
+        #print(model.osci.ODEDynamic.couplings.grad)
+        #print(model.linear.weight.grad.sum())
+        #print()
+
+        #Workaround to propagate gradients through the conv model  
+        if args.ode_train == True:
+            nfe_forward = model.osci.nfe
+            print('nb call',nfe_forward)
+            model.osci.nfe = 0
+            coupling_train.backward(gradient=model.osci.ODEDynamic.couplings.grad)
+            #print(model.linear.weight.grad)
+
+
         op.step()
        
         # visualize training

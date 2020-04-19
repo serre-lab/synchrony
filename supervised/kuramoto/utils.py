@@ -113,19 +113,19 @@ def kura_param_show(coupling, omega, img_side, path, name):
         plt.close()
 
     # Frequencies
-    
-    layer1_omega = omega[:img_side**2].reshape(img_side, img_side)
-    layer2_omega = omega[img_side**2:]
-    layer_name = ('layer_1', 'layer_2')
-    for o, omegas in enumerate([layer1_omega, layer2_omega]):
-        im = plt.imshow(layer1_omega)
-        plt.title('{} Intrinsic Frequencies'.format(layer_name[o]))
-        plt. gca().grid(False)
-        plt.axis('off')
-        plt.colorbar(im)
-        plt.savefig(path + '{}_frequencies_{}'.format(layer_name[o], name))
-        plt.close()
-    
+    if omega is not None:
+        layer1_omega = omega[:img_side**2].reshape(img_side, img_side)
+        layer2_omega = omega[img_side**2:]
+        layer_name = ('layer_1', 'layer_2')
+        for o, omegas in enumerate([layer1_omega, layer2_omega]):
+            im = plt.imshow(layer1_omega)
+            plt.title('{} Intrinsic Frequencies'.format(layer_name[o]))
+            plt. gca().grid(False)
+            plt.axis('off')
+            plt.colorbar(im)
+            plt.savefig(path + '{}_frequencies_{}'.format(layer_name[o], name))
+            plt.close()
+
     return True
 
 

@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from kuramoto import Kuramoto as km
+from kuramoto import ODEDynamic
 import losses as ls
 import matplotlib.pyplot as plt
 import matplotlib.lines as lines
@@ -26,6 +27,7 @@ class KuraNet(nn.Module):
                        walk_step=walk_step, device=device,
                        intrinsic_frequencies=intrinsic_frequencies)
         self.evolution = self.osci.evolution
+        self.ODE_evolution = self.osci.ODE_evolution
 
 def load_net(args, connectivity, num_global):
     if args.model_name == 'simple_conv':
@@ -38,6 +40,8 @@ def load_net(args, connectivity, num_global):
         return Unet(args, connectivity, num_global)
     elif args.model_name == 'Unetbaseline':
         return Unetbaseline(args, connectivity, num_global)
+    elif args.model_name == 'ODE_conv':
+        return ODE_conv(args, connectivity, num_global)
     else:
         raise ValueError('Network not included so far')
 
@@ -244,8 +248,8 @@ class Unetbaseline(nn.Module):
 
     def reset_params(self):
         for i, m in enumerate(self.modules()):
-            self.weights_init(m)           
-            
+            self.weights_init(m)
+
         
 
 class simple_conv(KuraNet):
@@ -389,7 +393,6 @@ class base_conv(KuraNet):
         # x = self.conv_final(x)
 
         omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
-            
 
         if self.num_global == 0:
             x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
@@ -503,8 +506,7 @@ class criterion(nn.Module):
                 losses = \
                     ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
-                                          transform,
-                                          self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
+                                          transform=transform, device=self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
             return torch.matmul(losses,
                             torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
         else:
@@ -522,6 +524,86 @@ class regularizer(nn.Module):
             return lx.coupling_regularizer(coupling.detach(), mask.detach(), device).mean()
         else:
             return lx.coupling_regularizer(coupling, mask, device).mean()
+
+
+class ODE_conv(KuraNet):
+    def __init__(self, args, connectivity, num_global):
+        """
+        nn.module object for passing to odeint module for various image size, feature maps are all in the same shape as input
+        """
+        super(ODE_conv, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size,
+                                        update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps,
+                                        phase_initialization=args.phase_initialization, walk_step=args.walk_step,
+                                        intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+
+        self.num_cn = args.num_cn
+        self.num_global = num_global
+        self.img_side = args.img_side
+        self.out_channels = args.out_channels
+        if num_global > 0:
+            self.out_channels += 1
+        self.split = args.split
+        self.convs = []
+        self.device = args.device
+        self.depth = args.depth
+
+        start_filts = int(args.start_filts / 2)
+        for i in range(self.depth):
+            ins = args.in_channels if i == 0 else outs
+            outs = start_filts * (2 ** i)
+            conv = nn.Conv2d(ins, outs, kernel_size=args.kernel_size[0], stride=1,
+                             padding=int((args.kernel_size[0] - 1) / 2)).to(self.device)
+            self.convs.append(conv)
+
+        #self.convs = nn.ModuleList(self.convs)
+
+        self.out_channels = outs
+        if args.intrinsic_frequencies == 'conv':
+            self.omega = nn.Linear(int(self.out_channels * args.img_side ** 2), int(args.img_side ** 2))
+        else:
+            self.omega = None
+
+        if num_global == 0:
+            self.linear = nn.Linear(int((self.out_channels / self.split) * (self.img_side ** 2)),
+                                    int(((self.img_side ** 2) / self.split) * self.num_cn))
+        else:
+            self.linear1 = nn.Linear(int(((self.out_channels - 1) / self.split) * (self.img_side ** 2)),
+                                     int(((self.img_side ** 2) / self.split) * (self.num_cn + 1)))
+
+            self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global)
+        self.reset_params()
+
+        if args.ode_train == True:
+            self.osci.ODEDynamic = ODEDynamic(args)
+
+    def forward(self, x):
+        x_in = x
+        for i, module in enumerate(self.convs):
+            x = torch.tanh(module(x))  # if i < self.depth - 1 else torch.sigmoid(module(x))
+        #omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
+        if self.num_global == 0:
+            couplings = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
+                                              (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
+
+            couplings = couplings / couplings.norm(p=2, dim=2).unsqueeze(2)
+            phase_list, couplings = self.ODE_evolution(couplings)
+            #phase_list = torch.split(phase_list[0],1,dim=0)
+            return phase_list, couplings, None
+
+    @staticmethod
+    def weights_init(m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.xavier_normal_(m.weight)
+            nn.init.constant_(m.bias, 0)
+
+    def reset_params(self):
+        for i, m in enumerate(self.modules()):
+            self.weights_init(m)
+
+
+
+
+
 
 
 def plot_grad_flow(named_parameters, save_name):
