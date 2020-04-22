@@ -65,7 +65,7 @@ def exinp_integrate_torch2(phase, mask, transform, device):
     prod = (torch.bmm(torch.transpose(product_s, 1, 2), product_s) +
             torch.bmm(torch.transpose(product_c, 1, 2), product_c)) / (groups_size_mat + 1e-8)
     if transform == 'exp':
-        prod = torch.exp(prod * diag + torch.eye(groups_size_mat.shape[1]).to(device)) * \
+        prod = torch.exp(prod * diag + torch.eye(groups_size_mat.shape[1]).cuda(device)) * \
                torch.where(groups_size_mat == 0, torch.zeros_like(groups_size_mat), torch.ones_like(groups_size_mat))
     elif transform == 'linear':
         prod = (prod * diag + torch.eye(groups_size_mat.shape[1]).to(device) + 1) * \

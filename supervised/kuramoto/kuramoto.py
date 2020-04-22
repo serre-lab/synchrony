@@ -35,6 +35,7 @@ class Kuramoto(object):
                  connectivity0=8,
                  update_rate=0.1,
                  update_fn_number = 3,
+                 max_time = 100,
                  device='cpu', method='odeint'):
   
         self.N = oscillator_number
@@ -44,7 +45,7 @@ class Kuramoto(object):
         self.eps = update_rate
         self.anneal = anneal
         self.time_steps = time_steps
-        self.integration_time = torch.linspace(0., 20., 200).float()
+        self.integration_time =  torch.linspace(0., max_time, 20).float()
 
         if update_fn_number == 1:
             self.update = self._update1
@@ -159,7 +160,7 @@ class Kuramoto(object):
         return True
 
     #Defines the dynamic and solve the sytem for the specified self.integration_time.
-    def ODE_evolution(self, coupling, rtol=1e-6, atol=1e-12, method='euler', options=None):
+    def ODE_evolution(self, coupling, rtol=1e-4, atol=1e-4, method='euler', options=None):
         b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0]
         dv = coupling[0].device if self.gN > 0 else coupling.device
         phase_init = self.phase_0(b).to(dv)

@@ -11,11 +11,12 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
 import display as disp
+from utils import *
 from torch.autograd import grad
 import sys
 from distutils.util import strtobool
 from losses import calc_sbd
-from utils import *
+
 import ipdb
 import warnings
 warnings.filterwarnings('ignore')
@@ -155,6 +156,7 @@ else:
     classifier_params = criterion.classifier.parameters() if args.classify is True else []
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
 
+
 loss_history = []
 sbd_history=[]
 loss_history_test = []
@@ -202,8 +204,8 @@ for epoch in range(args.train_epochs):
 
         last_phase = phase_list_train[-1].cpu().detach().numpy()
         colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
-        
-        
+
+
         if args.one_image:
             if np.logical_and(epoch==0,step==0):
                 ex_image = torch.tensor(train_data[0, 0, ...]).to(args.device).float()
@@ -230,17 +232,17 @@ for epoch in range(args.train_epochs):
             tavg_loss += args.sparsity_weight * torch.abs(omega_train).mean()
         l+=tavg_loss.data.cpu().numpy()
 
-        tavg_loss.backward(retain_graph=True)
-        #print(model.osci.ODEDynamic.couplings.grad)
-        #print(model.linear.weight.grad.sum())
-        #print()
 
-        #Workaround to propagate gradients through the conv model  
+        #Gradient computation on the graph
+        tavg_loss.backward(retain_graph=True)
+        #Workaround to propagate gradients through the conv model
         if args.ode_train == True:
-            nfe_forward = model.osci.nfe
-            print('nb call',nfe_forward)
-            model.osci.nfe = 0
-            coupling_train.backward(gradient=model.osci.ODEDynamic.couplings.grad)
+            #nfe_forward = model.osci.nfe
+            #print('nb call',nfe_forward)
+            #model.osci.nfe = 0
+            #print(model.module.linear.weight.grad)
+            #print(model.module.Dynamic.couplings.grad.shape)
+            coupling_train.backward(gradient=torch.cat(model.module.Dynamic.couplings.grad,0))
             #print(model.linear.weight.grad)
 
 

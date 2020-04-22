@@ -7,7 +7,7 @@ import json, ast
 import sys
 import ipdb
 
-os.environ["CUDA_VISIBLE_DEVICES"]='0'
+os.environ["CUDA_VISIBLE_DEVICES"]='0,1,2'
 
 meta_parser = argparse.ArgumentParser()
 meta_parser.add_argument('--name', type=str, default='DEFAULT')
@@ -31,7 +31,7 @@ if meta_args.name[-6:] == 'search':
     if len(search_values) != len(device_indices):
         ValueError('Your search has not allocated the correct number of devices.') 
     for v, value in enumerate(search_values):
-        sub_args[search_parameter] = value 
+        sub_args[search_parameter] = value
         sub_args['exp_name'] = '{}_{}_{}'.format(sub_experiment,search_parameter, value)
         print('Running {} experiment with value {} on device {}'.format(search_parameter,value,device_indices[v]))
         #os.environ["CUDA_VISIBLE_DEVICES"]=str(device_indices[v])
@@ -39,10 +39,10 @@ if meta_args.name[-6:] == 'search':
         process_string = 'CUDA_VISIBLE_DEVICES={}, python train.py '.format(device_indices[v])
         for st in arg_strings: process_string += st
         subprocess.call(process_string + '&', shell=True)    
-    
+
 else:
     arg_strings = ['--{} {}'.format(key, value) + ' ' for (key, value) in config.items(meta_args.name)] 
-    process_string = ' train.py '
+    process_string = ' train_dist.py ' #train.py
     for st in arg_strings:
         process_string += st
     print(sys.executable + process_string)

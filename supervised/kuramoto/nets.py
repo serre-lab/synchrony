@@ -13,7 +13,7 @@ import matplotlib.lines as lines
 import ipdb
 
 class KuraNet(nn.Module):
-    def __init__(self, img_side, connectivity, num_global, batch_size=32, device='cpu',
+    def __init__(self,args, img_side, connectivity, num_global, batch_size=32, device='cpu',
                  update_rate=.1, anneal=0, time_steps=10, phase_initialization='random', walk_step=.1, intrinsic_frequencies='zero'):
         super(KuraNet, self).__init__()
 
@@ -24,12 +24,12 @@ class KuraNet(nn.Module):
                        anneal=anneal, time_steps=time_steps,
                        connectivity0=connectivity, num_global=num_global,
                        phase_initialization=phase_initialization,
-                       walk_step=walk_step, device=device,
+                       walk_step=walk_step, device=device,max_time=args.max_time,
                        intrinsic_frequencies=intrinsic_frequencies)
         self.evolution = self.osci.evolution
         self.ODE_evolution = self.osci.ODE_evolution
 
-def load_net(args, connectivity, num_global):
+def load_net(args, connectivity, rank, num_global):
     if args.model_name == 'simple_conv':
         return simple_conv(args, connectivity, num_global)
     elif args.model_name == 'base_conv':
@@ -41,7 +41,7 @@ def load_net(args, connectivity, num_global):
     elif args.model_name == 'Unetbaseline':
         return Unetbaseline(args, connectivity, num_global)
     elif args.model_name == 'ODE_conv':
-        return ODE_conv(args, connectivity, num_global)
+        return ODE_conv(args, connectivity, rank, num_global)
     else:
         raise ValueError('Network not included so far')
 
@@ -483,15 +483,15 @@ class base_noKura_conv(nn.Module):
             self.weights_init(m)
 
 class criterion(nn.Module):
-    def __init__(self, degree, in_size, device='cpu', classify=False, recurrent_classifier=False):
+    def __init__(self, degree, in_size, rank, classify=False, recurrent_classifier=False):
         super(criterion, self).__init__()
         self.classify = classify
         if self.classify: 
             self.classifier = read_out(in_size, recurrent=recurrent_classifier).to(device)
             self.classifier_loss = torch.nn.BCEWithLogitsLoss()
-        self.device = device
         self.recurrent_classifier = recurrent_classifier
         self.degree = degree
+        self.rank = rank
 
     def forward(self, phase_list, mask, transform, valid=False, targets=None):
         # losses will be 1d, with its length = episode length
@@ -501,14 +501,14 @@ class criterion(nn.Module):
                     ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
-                                          self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
+                                          self.rank).reshape(len(phase_list), mask.shape[0]).mean(1)
             else:
                 losses = \
                     ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
-                                          transform=transform, device=self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
+                                          transform=transform, device=self.rank).reshape(len(phase_list), mask.shape[0]).mean(1)
             return torch.matmul(losses,
-                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().to(self.device))
+                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().cuda(self.rank))
         else:
             out = self.classifier.forward(torch.stack(phase_list))
             loss = torch.stack([self.classifier_loss(out[p], targets)*(p+1)**self.degree for p in range(out.shape[0])]).sum(0)
@@ -527,7 +527,7 @@ class regularizer(nn.Module):
 
 
 class ODE_conv(KuraNet):
-    def __init__(self, args, connectivity, num_global):
+    def __init__(self, args, connectivity, rank, num_global):
         """
         nn.module object for passing to odeint module for various image size, feature maps are all in the same shape as input
         """
@@ -544,8 +544,8 @@ class ODE_conv(KuraNet):
             self.out_channels += 1
         self.split = args.split
         self.convs = []
-        self.device = args.device
         self.depth = args.depth
+        self.device = torch.device("cuda:{}".format(rank))
 
         start_filts = int(args.start_filts / 2)
         for i in range(self.depth):
@@ -559,18 +559,18 @@ class ODE_conv(KuraNet):
 
         self.out_channels = outs
         if args.intrinsic_frequencies == 'conv':
-            self.omega = nn.Linear(int(self.out_channels * args.img_side ** 2), int(args.img_side ** 2))
+            self.omega = nn.Linear(int(self.out_channels * args.img_side ** 2), int(args.img_side ** 2)).to(self.device)
         else:
             self.omega = None
 
         if num_global == 0:
             self.linear = nn.Linear(int((self.out_channels / self.split) * (self.img_side ** 2)),
-                                    int(((self.img_side ** 2) / self.split) * self.num_cn))
+                                    int(((self.img_side ** 2) / self.split) * self.num_cn)).to(self.device)
         else:
             self.linear1 = nn.Linear(int(((self.out_channels - 1) / self.split) * (self.img_side ** 2)),
-                                     int(((self.img_side ** 2) / self.split) * (self.num_cn + 1)))
+                                     int(((self.img_side ** 2) / self.split) * (self.num_cn + 1))).to(self.device)
 
-            self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global)
+            self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global).to(self.device)
         self.reset_params()
 
         if args.ode_train == True:
@@ -587,7 +587,6 @@ class ODE_conv(KuraNet):
 
             couplings = couplings / couplings.norm(p=2, dim=2).unsqueeze(2)
             phase_list, couplings = self.ODE_evolution(couplings)
-            #phase_list = torch.split(phase_list[0],1,dim=0)
             return phase_list, couplings, None
 
     @staticmethod
@@ -599,11 +598,6 @@ class ODE_conv(KuraNet):
     def reset_params(self):
         for i, m in enumerate(self.modules()):
             self.weights_init(m)
-
-
-
-
-
 
 
 def plot_grad_flow(named_parameters, save_name):
