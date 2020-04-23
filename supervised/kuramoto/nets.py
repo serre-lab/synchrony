@@ -13,7 +13,7 @@ import matplotlib.lines as lines
 import ipdb
 
 class KuraNet(nn.Module):
-    def __init__(self,args, img_side, connectivity, num_global, batch_size=32, device='cpu',
+    def __init__(self, args, img_side, connectivity, num_global, batch_size=32, device='cpu',
                  update_rate=.1, anneal=0, time_steps=10, phase_initialization='random', walk_step=.1, intrinsic_frequencies='zero'):
         super(KuraNet, self).__init__()
 
@@ -531,7 +531,7 @@ class ODE_conv(KuraNet):
         """
         nn.module object for passing to odeint module for various image size, feature maps are all in the same shape as input
         """
-        super(ODE_conv, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size,
+        super(ODE_conv, self).__init__(args, args.img_side, connectivity, num_global, batch_size=args.batch_size,
                                         update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps,
                                         phase_initialization=args.phase_initialization, walk_step=args.walk_step,
                                         intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
@@ -545,32 +545,32 @@ class ODE_conv(KuraNet):
         self.split = args.split
         self.convs = []
         self.depth = args.depth
-        self.device = torch.device("cuda:{}".format(rank))
+        #self.device = torch.device("cuda:{}".format(rank))
 
         start_filts = int(args.start_filts / 2)
         for i in range(self.depth):
             ins = args.in_channels if i == 0 else outs
             outs = start_filts * (2 ** i)
             conv = nn.Conv2d(ins, outs, kernel_size=args.kernel_size[0], stride=1,
-                             padding=int((args.kernel_size[0] - 1) / 2)).to(self.device)
+                             padding=int((args.kernel_size[0] - 1) / 2)).cuda(rank)
             self.convs.append(conv)
 
         #self.convs = nn.ModuleList(self.convs)
 
         self.out_channels = outs
         if args.intrinsic_frequencies == 'conv':
-            self.omega = nn.Linear(int(self.out_channels * args.img_side ** 2), int(args.img_side ** 2)).to(self.device)
+            self.omega = nn.Linear(int(self.out_channels * args.img_side ** 2), int(args.img_side ** 2)).cuda(rank)
         else:
             self.omega = None
 
         if num_global == 0:
             self.linear = nn.Linear(int((self.out_channels / self.split) * (self.img_side ** 2)),
-                                    int(((self.img_side ** 2) / self.split) * self.num_cn)).to(self.device)
+                                    int(((self.img_side ** 2) / self.split) * self.num_cn)).cuda(rank)
         else:
             self.linear1 = nn.Linear(int(((self.out_channels - 1) / self.split) * (self.img_side ** 2)),
-                                     int(((self.img_side ** 2) / self.split) * (self.num_cn + 1))).to(self.device)
+                                     int(((self.img_side ** 2) / self.split) * (self.num_cn + 1))).cuda(rank)
 
-            self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global).to(self.device)
+            self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global).cuda(rank)
         self.reset_params()
 
         if args.ode_train == True:

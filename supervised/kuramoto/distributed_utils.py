@@ -29,6 +29,7 @@ class Partition(object):
         data_idx = self.index[index]
         return self.data[data_idx]
 
+
 class DataPartitioner(object):
     def __init__(self, data, size, seed=1234):
         self.data = data
@@ -59,6 +60,7 @@ def partition_dataset(dataset, batch_size, shuffle=True, drop_last=True):
     return train_set, bsz
 
 
+
 def run(rank, args, connectivity):
 
     loss_history = []
@@ -67,6 +69,7 @@ def run(rank, args, connectivity):
     sbd_history_test = []
     epoch_history_test = []
     coupling_history = []
+    norm = np.sum(np.arange(1, args.record_steps + 1) ** 2)
 
     displayer = disp.displayer(args.segments, interactive=args.interactive)
 
@@ -79,7 +82,6 @@ def run(rank, args, connectivity):
     testing_set = datasets.DatasetFolder(args.test_path, np.load, extensions=('npy',))
     testing_loader, test_bsz = partition_dataset(dataset=testing_set, batch_size=args.batch_size, shuffle=True,
                                                  drop_last=True)
-
     #loading model and syncing
     model = nets.load_net(args, connectivity, rank, args.num_global_control)
     criterion = nets.criterion(args.time_weight, args.img_side ** 2, classify=args.classify,
@@ -104,6 +106,8 @@ def run(rank, args, connectivity):
     num_batches = ceil(len(training_loader.dataset)/float(train_bsz))
     for epoch in range(args.train_epochs):
         print('Epoch: {}'.format(epoch))
+
+        l_test, sbd_test = testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer)
 
         l = 0
         sbd = 0
@@ -134,7 +138,7 @@ def run(rank, args, connectivity):
             if omega_train is not None:
                 tavg_loss += args.sparsity_weight * torch.abs(omega_train).mean()
             l += tavg_loss.data.cpu().numpy()
-
+            loss_history.append(l / (step + 1))
 
             # Backpropagation and workaround to propagate gradients through the conv model
             tavg_loss.backward(retain_graph=True)
@@ -147,14 +151,10 @@ def run(rank, args, connectivity):
             op.step()
             sync_weights_2(model)
 
-            print('Rank ', dist.get_rank(), ', epoch ', epoch, ': ', tavg_loss.data.cpu().numpy() )
+            print('Rank ', dist.get_rank(), ', epoch ', epoch, ': ', tavg_loss.data.cpu().numpy(), 'call : ',nfe_forward )
 
-            if step > 0:
-                loss_history.append(l / (step + 1))
-                sbd_history.append(sbd / ((1 + (step // args.show_every)) * args.batch_size))
-
-            if step % args.show_every == 0:
-                sbd += display_master(last_phase,
+            if step % args.show_every == 0 and args.rank == 0:
+                sbd_ = display_master(last_phase,
                                phase_list_train,batch,
                                mask,
                                coupling_train,
@@ -166,6 +166,9 @@ def run(rank, args, connectivity):
                                epoch,
                                step,
                                displayer)
+
+                sbd += sbd_
+                sbd_history.append(sbd / ((1 + (step // args.show_every)) * (args.batch_size/args.world_size)))
 
                 save_plot(args, epoch,
                           model, op,
@@ -180,13 +183,11 @@ def run(rank, args, connectivity):
                           clustering_train=None,
                           clustering_val=None)
 
-
-
-
-
-
-
-
+        if (epoch + 1) % args.eval_interval == 0:
+            l_test, sbd_test = testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer)
+            loss_history_test.append(l_test)
+            sbd_history_test.append(sbd_test)
+            epoch_history_test.append(epoch*len(training_loader)/(args.batch_size*args.world_size))
 
 
 
@@ -201,7 +202,7 @@ def display_master(last_phase,
                    epoch,step,
                    displayer):
     clustered_batch = []
-    sbd=[]
+    sbd=0
     if args.rank == 0:
         for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
             clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
@@ -266,54 +267,47 @@ def Launch(args, connectivity):
         p.join()
 
 
-def testing(epoch, args, testing_loader):
-    if (epoch + 1) % args.eval_interval == 0:
-        l = 0
-        sbd = 0
-        PL_epoch = []
-        clustering_epoch = []
+def testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer):
+    l = 0
+    sbd = 0
+    PL_epoch = []
+    clustering_epoch = []
+    with torch.no_grad():
+        for step, (test_data, _) in tqdm(enumerate(testing_loader)):
+            # cross-validation
+            batch = torch.tensor(test_data[:, 0, ...]).cuda(rank).float()
+            mask = torch.tensor(test_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).float().cuda(rank)
+            #label_inds = (((mask.sum(2) > 0) * 1).sum(1) == args.segments - 1) * 1
+            #labels = torch.zeros((args.batch_size, 2)).cuda(rank).scatter_(1, label_inds.unsqueeze(1), 1.0)
 
-        with torch.no_grad():
-            for step, (test_data, _) in tqdm(enumerate(testing_loader)):
-                # cross-validation
-                batch = test_data[:, 0, ...].float().to(args.device)
-                mask = test_data[:, 1:, ...].reshape(-1, args.segments, args.img_side * args.img_side).float().to(
-                    args.device)
-                label_inds = (((mask.sum(2) > 0) * 1).sum(1) == args.segments - 1) * 1
-                labels = torch.zeros((args.batch_size, 2)).to(args.device).scatter_(1, label_inds.unsqueeze(1), 1.0)
+            phase_list_test, coupling_test, omega_test = model(batch.unsqueeze(1))
+            last_phase = phase_list_test[-1].cpu().detach().numpy()
+            colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0),
+                                           axis=-1) * mask.cpu().detach().numpy()).sum(1)
 
-                phase_list_test, coupling_test, omega_test = model(batch.unsqueeze(1))
+            clustered_batch = []
+            for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
+                clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
+                sbd += calc_sbd(clustered_batch[idx] + 1, sample_mask + 1)
 
-                last_phase = phase_list_test[-1].cpu().detach().numpy()
-                colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0),
-                                               axis=-1) * mask.cpu().detach().numpy()).sum(1)
+            tavg_loss_test = criterion(phase_list_test[-1 * args.record_steps:], mask, args.transform, valid=True)
+            tavg_loss_test = tavg_loss_test.mean() #/ norm
+            if coupling_test is not None:
+                tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
+            if omega_test is not None:
+                tavg_loss_test += args.sparsity_weight * torch.abs(omega_test).mean()
+            l += tavg_loss_test.data.cpu().numpy()
 
-                clustered_batch = []
-                for idx, (sample_phase, sample_mask) in enumerate(zip(last_phase, colored_mask)):
-                    clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
-                    sbd += calc_sbd(clustered_batch[idx] + 1, sample_mask + 1)
+            if step % args.show_every == 0:
+                # visualize validation and save
+                # validation example, save its coupling matrix
+                display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test,
+                        args.img_side, args.segments, args.save_dir,
+                        'test{}_{}'.format(epoch, step), args.rf_type)
 
-                tavg_loss_test = criterion(phase_list_test[-1 * args.record_steps:], mask, args.transform, valid=True,
-                                           targets=labels)
-                tavg_loss_test = tavg_loss_test.mean() / norm
-                if coupling_test is not None:
-                    tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
-                if omega_test is not None:
-                    tavg_loss_test += args.sparsity_weight * torch.abs(omega_test).mean()
-                l += tavg_loss_test.data.cpu().numpy()
-
-                if step % args.show_every == 0:
-                    # visualize validation and save
-                    # validation example, save its coupling matrix
-                    display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test,
-                            args.img_side, args.segments, save_dir,
-                            'test{}_{}'.format(epoch, step), args.rf_type)
-                # if step*args.batch_size > num_test:
-                #    break
-
-        loss_history_test.append(l / (step + 1))
-        sbd_history_test.append(sbd / ((step + 1) * args.batch_size))
-        epoch_history_test.append(epoch)
+            # if step*args.batch_size > num_test:
+            #    break
+    return l/(step + 1), sbd/((step + 1) *(args.batch_size/args.world_size))
 
 
 def save_plot(args,epoch,

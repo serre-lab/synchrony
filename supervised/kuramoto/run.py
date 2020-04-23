@@ -10,7 +10,7 @@ import ipdb
 os.environ["CUDA_VISIBLE_DEVICES"]='0,1,2'
 
 meta_parser = argparse.ArgumentParser()
-meta_parser.add_argument('--name', type=str, default='DEFAULT')
+meta_parser.add_argument('--name', type=str, default='ODE_100_2')
 meta_args = meta_parser.parse_args()
 
 print(meta_args)
@@ -42,7 +42,7 @@ if meta_args.name[-6:] == 'search':
 
 else:
     arg_strings = ['--{} {}'.format(key, value) + ' ' for (key, value) in config.items(meta_args.name)] 
-    process_string = ' train_dist.py ' #train.py
+    process_string = ' train_dist.py '
     for st in arg_strings:
         process_string += st
     print(sys.executable + process_string)
