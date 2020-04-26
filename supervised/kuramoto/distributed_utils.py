@@ -70,6 +70,7 @@ def run(rank, args, connectivity):
     epoch_history_test = []
     coupling_history = []
     norm = np.sum(np.arange(1, args.record_steps + 1) ** 2)
+    device = torch.device("cuda:{}".format(rank))
 
     displayer = disp.displayer(args.segments, interactive=args.interactive)
 
@@ -84,8 +85,9 @@ def run(rank, args, connectivity):
                                                  drop_last=True)
     #loading model and syncing
     model = nets.load_net(args, connectivity, rank, args.num_global_control)
+    model = model.to(device)
     criterion = nets.criterion(args.time_weight, args.img_side ** 2, classify=args.classify,
-                               recurrent_classifier=args.recurrent_classifier, rank=rank)
+                               recurrent_classifier=args.recurrent_classifier, rank=rank).to(device)
 
     sync_weights_2(model)
 
@@ -107,7 +109,7 @@ def run(rank, args, connectivity):
     for epoch in range(args.train_epochs):
         print('Epoch: {}'.format(epoch))
 
-        l_test, sbd_test = testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer)
+        #l_test, sbd_test = testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer)
 
         l = 0
         sbd = 0
@@ -116,8 +118,8 @@ def run(rank, args, connectivity):
         clustering_epoch = []
 
         for step, (train_data, _) in tqdm(enumerate(training_loader)):
-            batch = torch.tensor(train_data[:, 0, ...]).cuda(rank).float()
-            mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(rank).float()
+            batch = torch.tensor(train_data[:, 0, ...]).to(device).float()
+            mask = torch.tensor(train_data[:, 1:, ...]).reshape(-1, args.segments, args.img_side * args.img_side).to(device).float()
             #label_inds = (((mask.sum(2) > 0) * 1).sum(1) == args.segments - 1) * 1
             #labels = torch.zeros((args.batch_size, 2)).cuda(rank).scatter_(1, label_inds.unsqueeze(1), 1.0)
 
@@ -245,7 +247,7 @@ def validate(model, rank, world_size):
             dist.recv(param.data, src=0)
 
 
-def init_processes(rank, args, connectivity, func, backend='gloo'):
+def init_processes(rank, args, connectivity, func, backend='nccl'):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '29500'

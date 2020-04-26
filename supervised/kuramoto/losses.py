@@ -74,6 +74,23 @@ def exinp_integrate_torch2(phase, mask, transform, device):
         raise ValueError('transformation not included')
     return prod.sum(2).sum(1) / torch.abs(torch.sign(prod)).sum(2).sum(1)
 
+def exinp_integrate_torch3(phase, mask, transform, device):
+
+    # This does not avg over batch
+    phase = phase.to(device)
+    groups_size = torch.sum(mask, dim=2)
+    M = mask.shape(1)
+    cos_ = mask*torch.cos(phase).repeat(1,M).float()
+    sin_ = mask*torch.sin(phase).repeat(1,M).float()
+    sync = (torch.pow(cos_.sum(2)**2 + sin_.sum(2)**2,0.5)/groups_size).sum(1)/M.float()
+
+    avg_cos = cos_.sum(2)/groups_size
+    avg_sin = sin_.sum(2)/groups_size
+    desync = (torch.pow(avg_cos.sum(1)**2 + avg_sin.sum(1)**2,0.5))/M.float()
+
+    return desync - sync
+
+
 
 def coupling_regularizer(coupling, mask, device):
     coupling = coupling.to(device)

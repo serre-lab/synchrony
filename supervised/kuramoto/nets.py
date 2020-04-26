@@ -498,13 +498,13 @@ class criterion(nn.Module):
         if not self.classify:
             if valid:
                 losses = \
-                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
+                    ls.exinp_integrate_torch3(torch.cat(phase_list, dim=0).detach(),
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
                                           self.rank).reshape(len(phase_list), mask.shape[0]).mean(1)
             else:
                 losses = \
-                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
+                    ls.exinp_integrate_torch3(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform=transform, device=self.rank).reshape(len(phase_list), mask.shape[0]).mean(1)
             return torch.matmul(losses,
@@ -545,6 +545,7 @@ class ODE_conv(KuraNet):
         self.split = args.split
         self.convs = []
         self.depth = args.depth
+        self.args = args
         #self.device = torch.device("cuda:{}".format(rank))
 
         start_filts = int(args.start_filts / 2)
@@ -552,25 +553,25 @@ class ODE_conv(KuraNet):
             ins = args.in_channels if i == 0 else outs
             outs = start_filts * (2 ** i)
             conv = nn.Conv2d(ins, outs, kernel_size=args.kernel_size[0], stride=1,
-                             padding=int((args.kernel_size[0] - 1) / 2)).cuda(rank)
+                             padding=int((args.kernel_size[0] - 1) / 2))
             self.convs.append(conv)
 
-        #self.convs = nn.ModuleList(self.convs)
+        self.convs = nn.ModuleList(self.convs)
 
         self.out_channels = outs
         if args.intrinsic_frequencies == 'conv':
-            self.omega = nn.Linear(int(self.out_channels * args.img_side ** 2), int(args.img_side ** 2)).cuda(rank)
+            self.omega = nn.Linear(int(self.out_channels * args.img_side ** 2), int(args.img_side ** 2))
         else:
             self.omega = None
 
         if num_global == 0:
             self.linear = nn.Linear(int((self.out_channels / self.split) * (self.img_side ** 2)),
-                                    int(((self.img_side ** 2) / self.split) * self.num_cn)).cuda(rank)
+                                    int(((self.img_side ** 2) / self.split) * self.num_cn))
         else:
             self.linear1 = nn.Linear(int(((self.out_channels - 1) / self.split) * (self.img_side ** 2)),
-                                     int(((self.img_side ** 2) / self.split) * (self.num_cn + 1))).cuda(rank)
+                                     int(((self.img_side ** 2) / self.split) * (self.num_cn + 1)))
 
-            self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global).cuda(rank)
+            self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global)
         self.reset_params()
 
         if args.ode_train == True:
@@ -580,13 +581,13 @@ class ODE_conv(KuraNet):
         x_in = x
         for i, module in enumerate(self.convs):
             x = torch.tanh(module(x))  # if i < self.depth - 1 else torch.sigmoid(module(x))
-        #omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
+        omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
         if self.num_global == 0:
             couplings = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
 
             couplings = couplings / couplings.norm(p=2, dim=2).unsqueeze(2)
-            phase_list, couplings = self.ODE_evolution(couplings)
+            phase_list, couplings = self.ODE_evolution(couplings, omega=omega, method=self.args.solver)
             return phase_list, couplings, None
 
     @staticmethod

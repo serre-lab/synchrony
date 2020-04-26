@@ -7,10 +7,10 @@ import json, ast
 import sys
 import ipdb
 
-os.environ["CUDA_VISIBLE_DEVICES"]='0,1,2'
+#os.environ["CUDA_VISIBLE_DEVICES"]='0,1,2'
 
 meta_parser = argparse.ArgumentParser()
-meta_parser.add_argument('--name', type=str, default='ODE_100_2')
+meta_parser.add_argument('--name', type=str, default='DEFAULT')
 meta_args = meta_parser.parse_args()
 
 print(meta_args)

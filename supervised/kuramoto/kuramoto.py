@@ -160,7 +160,7 @@ class Kuramoto(object):
         return True
 
     #Defines the dynamic and solve the sytem for the specified self.integration_time.
-    def ODE_evolution(self, coupling, rtol=1e-4, atol=1e-4, method='euler', options=None):
+    def ODE_evolution(self, coupling, omega=None, rtol=1e-4, atol=1e-4, method='euler', options=None):
         b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0]
         dv = coupling[0].device if self.gN > 0 else coupling.device
         phase_init = self.phase_0(b).to(dv)
