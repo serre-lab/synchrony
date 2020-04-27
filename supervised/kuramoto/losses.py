@@ -78,18 +78,20 @@ def exinp_integrate_torch3(phase, mask, transform, device):
 
     # This does not avg over batch
     phase = phase.to(device)
-    groups_size = torch.sum(mask, dim=2)
-    M = mask.shape(1)
-    cos_ = mask*torch.cos(phase).repeat(1,M).float()
-    sin_ = mask*torch.sin(phase).repeat(1,M).float()
-    sync = (torch.pow(cos_.sum(2)**2 + sin_.sum(2)**2,0.5)/groups_size).sum(1)/M.float()
+    groups_size = torch.sum(mask, dim=2)+1
+    M = torch.abs(torch.sign(torch.sum(mask, dim=2))).sum(1)
+    size = mask.shape[1]
+    cos_ = mask*torch.cos(phase).unsqueeze(1).repeat(1,size,1)
+    sin_ = mask*torch.sin(phase).unsqueeze(1).repeat(1,size,1)
+    sync = (torch.pow(torch.pow(cos_.sum(2), 2) + torch.pow(sin_.sum(2), 2) + 1e-8, 0.5) / groups_size).sum(1) / M
 
-    avg_cos = cos_.sum(2)/groups_size
-    avg_sin = sin_.sum(2)/groups_size
-    desync = (torch.pow(avg_cos.sum(1)**2 + avg_sin.sum(1)**2,0.5))/M.float()
+    n = torch.sign(torch.sum(mask, dim=2))
+    phase_ = (mask*phase.unsqueeze(1).repeat(1,size,1)).sum(2)/groups_size
+    print(n*phase_)
+    #print(torch.pow(torch.pow(torch.cos(phase_), 2).sum(1) + torch.pow(torch.sin(phase_), 2).sum(1), 0.5))
+    desync = (torch.pow(torch.pow((n*torch.cos(phase_)).sum(1), 2) + torch.pow((n*torch.sin(phase_)).sum(1), 2), 0.5))/M
 
     return desync - sync
-
 
 
 def coupling_regularizer(coupling, mask, device):

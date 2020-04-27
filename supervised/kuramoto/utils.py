@@ -56,7 +56,7 @@ def display(displayer, phase_list, images, masks, clustered_batch, coupling, ome
     clustered = clustered_batch[ind]
     displayer.set_phases(np_phase_list)
     displayer.set_masks(mask)
-    if rf_type == 'arange':
+    if rf_type == 'arange' and coupling is not None:
         kura_param_show(coupling, omega, img_side, path, name)
     if len(phase_list) > 4:
         displayer.static_evol(clustered, img_side, img_side, image, path + '/static_' + name, colored_mask)

@@ -132,7 +132,7 @@ def run(rank, args, connectivity):
 
             #Loss computation
             tavg_loss = criterion(phase_list_train[-1 * args.record_steps:], mask, args.transform, valid=False)
-            tavg_loss = tavg_loss.mean() #/ norm
+            tavg_loss = tavg_loss.mean() / norm
             print('loss', tavg_loss)
 
             if coupling_train is not None:
@@ -144,16 +144,17 @@ def run(rank, args, connectivity):
 
             # Backpropagation and workaround to propagate gradients through the conv model
             tavg_loss.backward(retain_graph=True)
-            nfe_forward = model.osci.nfe
-            model.osci.nfe = 0
-            coupling_train.backward(gradient=model.osci.ODEDynamic.couplings.grad)
+            if args.model_name== 'ODE_conv':
+                nfe_forward = model.osci.nfe
+                model.osci.nfe = 0
+                coupling_train.backward(gradient=model.osci.ODEDynamic.couplings.grad)
 
             # Send and average gradients across models
             average_gradients(model)
             op.step()
             sync_weights_2(model)
 
-            print('Rank ', dist.get_rank(), ', epoch ', epoch, ': ', tavg_loss.data.cpu().numpy(), 'call : ',nfe_forward )
+            print('Rank ', dist.get_rank(), ', epoch ', epoch, ': ', tavg_loss.data.cpu().numpy())
 
             if step % args.show_every == 0 and args.rank == 0:
                 sbd_ = display_master(last_phase,
@@ -274,6 +275,7 @@ def testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer
     sbd = 0
     PL_epoch = []
     clustering_epoch = []
+    norm = np.sum(np.arange(1, args.time_steps + 1) ** 2)
     with torch.no_grad():
         for step, (test_data, _) in tqdm(enumerate(testing_loader)):
             # cross-validation
@@ -293,7 +295,7 @@ def testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer
                 sbd += calc_sbd(clustered_batch[idx] + 1, sample_mask + 1)
 
             tavg_loss_test = criterion(phase_list_test[-1 * args.record_steps:], mask, args.transform, valid=True)
-            tavg_loss_test = tavg_loss_test.mean() #/ norm
+            tavg_loss_test = tavg_loss_test.mean() / norm
             if coupling_test is not None:
                 tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
             if omega_test is not None:

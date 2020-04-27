@@ -358,6 +358,7 @@ class base_conv(KuraNet):
         self.split = args.split
         self.convs = []
         self.depth = args.depth
+        self.dropout = nn.Dropout(args.dropout_p)
 
         start_filts = int(args.start_filts / 2)
         for i in range(self.depth):
@@ -391,7 +392,7 @@ class base_conv(KuraNet):
             x = torch.tanh(module(x)) #if i < self.depth - 1 else torch.sigmoid(module(x))
 
         # x = self.conv_final(x)
-
+        x = self.dropout(x.reshape(x.shape[0], -1)).reshape(x.shape)
         omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
 
         if self.num_global == 0:
@@ -443,6 +444,7 @@ class base_noKura_conv(nn.Module):
         self.split = args.split
         self.convs = []
         self.depth = args.depth
+        self.dropout = nn.Dropout(args.dropout_p)
 
         start_filts = int(args.start_filts / 2)
         for i in range(self.depth):
@@ -467,6 +469,7 @@ class base_noKura_conv(nn.Module):
 
         # x = self.conv_final(x)
         # x = self.linear(x.view(x.size(0), -1))
+        x = self.dropout(x.reshape(x.shape[0], -1)).reshape(x.shape)
         x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2)
 
@@ -498,15 +501,17 @@ class criterion(nn.Module):
         if not self.classify:
             if valid:
                 losses = \
-                    ls.exinp_integrate_torch3(torch.cat(phase_list, dim=0).detach(),
+                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
                                           self.rank).reshape(len(phase_list), mask.shape[0]).mean(1)
             else:
                 losses = \
-                    ls.exinp_integrate_torch3(torch.cat(phase_list, dim=0),
+                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform=transform, device=self.rank).reshape(len(phase_list), mask.shape[0]).mean(1)
+            print(torch.matmul(losses,
+                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().cuda(self.rank)))
             return torch.matmul(losses,
                             torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().cuda(self.rank))
         else:
@@ -546,6 +551,7 @@ class ODE_conv(KuraNet):
         self.convs = []
         self.depth = args.depth
         self.args = args
+        self.dropout = nn.Dropout(args.dropout_p)
         #self.device = torch.device("cuda:{}".format(rank))
 
         start_filts = int(args.start_filts / 2)
@@ -581,6 +587,7 @@ class ODE_conv(KuraNet):
         x_in = x
         for i, module in enumerate(self.convs):
             x = torch.tanh(module(x))  # if i < self.depth - 1 else torch.sigmoid(module(x))
+        x = self.dropout(x.reshape(x.shape[0],-1)).reshape(x.shape)
         omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
         if self.num_global == 0:
             couplings = self.linear(x.reshape(-1, int((self.out_channels / self.split) *

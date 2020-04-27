@@ -171,7 +171,7 @@ class Kuramoto(object):
                                                                                                src=coupling)
 
         #ODE dynamic is updated with coupling parameters and integrated through solver
-        self.ODEDynamic.update(couplings)
+        self.ODEDynamic.update(couplings, omega)
         phase_list = odeint(self.ODEDynamic, phase_init.flatten(), self.integration_time.type_as(phase_init), rtol, atol, method, options)
         return list(phase_list.reshape(self.integration_time.shape[0],b,-1)), couplings
 
@@ -197,16 +197,24 @@ class ODEDynamic(nn.Module):
         #self.couplings = torch.nn.Parameter(torch.Tensor([args.batch_size,args.img_side,args.img_side]),requires_grad=True)
         self.nfe = 0
 
-    def update(self, couplings):
+    def update(self, couplings, omega):
         self.couplings = torch.nn.Parameter(couplings,requires_grad=True)
+        if omega is not None:
+            self.omega = torch.nn.Parameter(omega, requires_grad=True)
+        else:
+            self.omega = None
 
     def forward(self, t, phase):
         phase = phase.reshape(self.couplings.shape[0],-1).float()
         n = torch.abs(torch.sign(self.couplings)).sum(2)
         delta_phase = (torch.bmm(self.couplings, torch.sin(phase).unsqueeze(2).float()).squeeze(2) * torch.cos(phase) -
                       torch.bmm(self.couplings, torch.cos(phase).unsqueeze(2).float()).squeeze(2) * torch.sin(phase)) / n
+        if self.omega is not None:
+            delta_phase = delta_phase.flatten() + self.omega.flatten()
+        else:
+            delta_phase = delta_phase.flatten()
         self.nfe+=1
-        return delta_phase.flatten()
+        return delta_phase
 
 if __name__ == '__main__':
     print('numpy version kuramoto dynamics simulation tool\n')

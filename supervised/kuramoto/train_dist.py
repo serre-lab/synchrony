@@ -42,6 +42,7 @@ parser.add_argument('--walk_step', type=float, default=.1)
 parser.add_argument('--ode_train', type=lambda x:bool(strtobool(x)),default=False)
 parser.add_argument('--max_time', type=float,default=100)
 parser.add_argument('--solver', type=str,default='euler')
+parser.add_argument('--dropout_p', type=float,default=0.)
 
 #graph stats
 parser.add_argument('--graph_stats', type=lambda x:bool(strtobool(x)), default=False)
@@ -84,13 +85,13 @@ else:
 
 ######################
 #Handling directories
-#load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name, str(args.segments))
-#save_dir = os.path.join('/media/data/mchalvid/osci_save_v4_ODE/results', args.exp_name)
-#model_dir = os.path.join('/media/data/mchalvid/osci_save_v4_ODE/models', args.exp_name)
+load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name, str(args.segments))
+save_dir = os.path.join('/media/data/mchalvid/osci_save_v4_ODE/results', args.exp_name)
+model_dir = os.path.join('/media/data/mchalvid/osci_save_v4_ODE/models', args.exp_name)
 
-load_dir = os.path.join('/users/mchalvid/data/mchalvid/data', args.data_name, str(args.segments))
-save_dir = os.path.join('/users/mchalvid/scratch/Kura_ODE/results', args.exp_name)
-model_dir = os.path.join('/users/mchalvid/scratch/Kura_ODE/models', args.exp_name)
+#load_dir = os.path.join('/users/mchalvid/data/mchalvid/data', args.data_name, str(args.segments))
+#save_dir = os.path.join('/users/mchalvid/scratch/Kura_ODE/results', args.exp_name)
+#model_dir = os.path.join('/users/mchalvid/scratch/Kura_ODE/models', args.exp_name)
 
 train_path = load_dir + '/training'
 test_path = load_dir + '/test'
