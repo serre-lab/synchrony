@@ -83,6 +83,22 @@ def exinp_integrate_torch3(phase, mask, transform, device):
     size = mask.shape[1]
     cos_ = mask*torch.cos(phase).unsqueeze(1).repeat(1,size,1)
     sin_ = mask*torch.sin(phase).unsqueeze(1).repeat(1,size,1)
+    sync = (torch.pow(torch.pow(cos_.sum(2),2) + torch.pow(sin_.sum(2),2) + 1e-8,0.5)/groups_size).sum(1)/M
+    avg_cos = cos_.sum(2)/groups_size
+    avg_sin = sin_.sum(2)/groups_size
+    desync = (torch.pow(avg_cos.sum(1)**2 + avg_sin.sum(1)**2,0.5))/M
+
+    return desync - sync
+
+def exinp_integrate_torch3_V2(phase, mask, transform, device):
+
+    # This does not avg over batch
+    phase = phase.to(device)
+    groups_size = torch.sum(mask, dim=2)+1
+    M = torch.abs(torch.sign(torch.sum(mask, dim=2))).sum(1)
+    size = mask.shape[1]
+    cos_ = mask*torch.cos(phase).unsqueeze(1).repeat(1,size,1)
+    sin_ = mask*torch.sin(phase).unsqueeze(1).repeat(1,size,1)
     sync = (torch.pow(torch.pow(cos_.sum(2), 2) + torch.pow(sin_.sum(2), 2) + 1e-8, 0.5) / groups_size).sum(1) / M
 
     n = torch.sign(torch.sum(mask, dim=2))
