@@ -496,22 +496,24 @@ class criterion(nn.Module):
         self.degree = degree
         self.rank = rank
 
-    def forward(self, phase_list, mask, transform, valid=False, targets=None):
+    def forward(self, phase_list, mask, transform, valid=False, loss='2', targets=None):
         # losses will be 1d, with its length = episode length
         if not self.classify:
+            if loss == '2':
+                loss_ = ls.exinp_integrate_torch2
+            elif loss == '3':
+                loss_ = ls.exinp_integrate_torch3
             if valid:
                 losses = \
-                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
+                    loss_(torch.cat(phase_list, dim=0).detach(),
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
                                           self.rank).reshape(len(phase_list), mask.shape[0]).mean(1)
             else:
                 losses = \
-                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
+                    loss_(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform=transform, device=self.rank).reshape(len(phase_list), mask.shape[0]).mean(1)
-            print(torch.matmul(losses,
-                            torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().cuda(self.rank)))
             return torch.matmul(losses,
                             torch.pow(torch.arange(len(phase_list)) + 1, self.degree).unsqueeze(1).float().cuda(self.rank))
         else:
@@ -551,6 +553,7 @@ class ODE_conv(KuraNet):
         self.convs = []
         self.depth = args.depth
         self.args = args
+        self.sigma = nn.Sigmoid()
         self.dropout = nn.Dropout(args.dropout_p)
         #self.device = torch.device("cuda:{}".format(rank))
 
@@ -588,14 +591,14 @@ class ODE_conv(KuraNet):
         for i, module in enumerate(self.convs):
             x = torch.tanh(module(x))  # if i < self.depth - 1 else torch.sigmoid(module(x))
         x = self.dropout(x.reshape(x.shape[0],-1)).reshape(x.shape)
-        omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
+        omega = self.sigma(self.omega(x.view(x.size(0), -1))) if self.omega is not None else None
         if self.num_global == 0:
             couplings = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
 
             couplings = couplings / couplings.norm(p=2, dim=2).unsqueeze(2)
             phase_list, couplings = self.ODE_evolution(couplings, omega=omega, method=self.args.solver)
-            return phase_list, couplings, None
+            return phase_list, couplings, omega
 
     @staticmethod
     def weights_init(m):

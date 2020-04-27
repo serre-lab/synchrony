@@ -68,6 +68,7 @@ parser.add_argument('--world_size', type=int,default=3)
 
 # loss parameters
 parser.add_argument('--transform', type=str, default='linear')
+parser.add_argument('--loss_version', type=str, default='2')
 parser.add_argument('--classify',type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--recurrent_classifier',type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--entropy_reg',type=lambda x:bool(strtobool(x)), default=False)

@@ -131,7 +131,7 @@ def run(rank, args, connectivity):
                                            axis=-1) * mask.cpu().detach().numpy()).sum(1)
 
             #Loss computation
-            tavg_loss = criterion(phase_list_train[-1 * args.record_steps:], mask, args.transform, valid=False)
+            tavg_loss = criterion(phase_list_train[-1 * args.record_steps:], mask, args.transform, loss=args.loss_version, valid=False)
             tavg_loss = tavg_loss.mean() / norm
             print('loss', tavg_loss)
 
@@ -147,8 +147,8 @@ def run(rank, args, connectivity):
             if args.model_name== 'ODE_conv':
                 nfe_forward = model.osci.nfe
                 model.osci.nfe = 0
-                coupling_train.backward(gradient=model.osci.ODEDynamic.couplings.grad)
-
+                coupling_train.backward(gradient=model.osci.ODEDynamic.couplings.grad,retain_graph=True)
+                omega_train.backward(gradient=model.osci.ODEDynamic.omega.grad)
             # Send and average gradients across models
             average_gradients(model)
             op.step()
@@ -294,7 +294,7 @@ def testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer
                 clustered_batch.append(clustering(sample_phase, n_clusters=args.segments))
                 sbd += calc_sbd(clustered_batch[idx] + 1, sample_mask + 1)
 
-            tavg_loss_test = criterion(phase_list_test[-1 * args.record_steps:], mask, args.transform, valid=True)
+            tavg_loss_test = criterion(phase_list_test[-1 * args.record_steps:], mask, args.transform, loss=args.loss_version, valid=True)
             tavg_loss_test = tavg_loss_test.mean() / norm
             if coupling_test is not None:
                 tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()

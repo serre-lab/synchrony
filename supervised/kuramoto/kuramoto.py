@@ -164,13 +164,11 @@ class Kuramoto(object):
         b = coupling[0].shape[0] if self.gN > 0 else coupling.shape[0]
         dv = coupling[0].device if self.gN > 0 else coupling.device
         phase_init = self.phase_0(b).to(dv)
-
         batch_lconnectivity = self.connectivity0.unsqueeze(0).repeat(coupling.shape[0], 1, 1).to(dv)
         couplings = torch.zeros(phase_init.shape[0], phase_init.shape[1], phase_init.shape[1]).to(dv).scatter_(dim=2,
                                                                                                index=batch_lconnectivity,
                                                                                                src=coupling)
-
-        #ODE dynamic is updated with coupling parameters and integrated through solver
+        #ODE dynamic module is updated with coupling parameters and integrated through solver
         self.ODEDynamic.update(couplings, omega)
         phase_list = odeint(self.ODEDynamic, phase_init.flatten(), self.integration_time.type_as(phase_init), rtol, atol, method, options)
         return list(phase_list.reshape(self.integration_time.shape[0],b,-1)), couplings
@@ -209,6 +207,7 @@ class ODEDynamic(nn.Module):
         n = torch.abs(torch.sign(self.couplings)).sum(2)
         delta_phase = (torch.bmm(self.couplings, torch.sin(phase).unsqueeze(2).float()).squeeze(2) * torch.cos(phase) -
                       torch.bmm(self.couplings, torch.cos(phase).unsqueeze(2).float()).squeeze(2) * torch.sin(phase)) / n
+
         if self.omega is not None:
             delta_phase = delta_phase.flatten() + self.omega.flatten()
         else:

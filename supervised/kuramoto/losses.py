@@ -103,7 +103,7 @@ def exinp_integrate_torch3_V2(phase, mask, transform, device):
 
     n = torch.sign(torch.sum(mask, dim=2))
     phase_ = (mask*phase.unsqueeze(1).repeat(1,size,1)).sum(2)/groups_size
-    print(n*phase_)
+    #print(n*phase_)
     #print(torch.pow(torch.pow(torch.cos(phase_), 2).sum(1) + torch.pow(torch.sin(phase_), 2).sum(1), 0.5))
     desync = (torch.pow(torch.pow((n*torch.cos(phase_)).sum(1), 2) + torch.pow((n*torch.sin(phase_)).sum(1), 2), 0.5))/M
 
