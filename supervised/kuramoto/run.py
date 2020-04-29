@@ -8,6 +8,7 @@ import ipdb
 
 meta_parser = argparse.ArgumentParser()
 meta_parser.add_argument('--name', type=str, default='E1')
+meta_parser.add_argument('--mode', type=str, default='train')
 meta_args = meta_parser.parse_args()
 
 config = ConfigParser()
@@ -37,6 +38,6 @@ if meta_args.name[-6:] == 'search':
     
 else:
     arg_strings = ['--{} {}'.format(key, value) + ' ' for (key, value) in config.items(meta_args.name)] 
-    process_string = 'python train.py '
+    process_string = 'python {}.py '.format(meta_args.mode)
     for st in arg_strings: process_string += st
     subprocess.call(process_string, shell=True)

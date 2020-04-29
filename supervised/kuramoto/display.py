@@ -405,7 +405,7 @@ class displayer(object):
             
             axes[i + 1].axis('off')
             if i == 4:
-                axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=len(np.unique(phase_list[i]))-1)
+                axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), vmin=0, vmax=len(np.unique(phase_list[i]))-1)
                 axes[i + 1].title.set_text('quantized')
             else:
                 axes[i + 1].imshow(np.reshape(phase_list[i], (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
@@ -462,7 +462,7 @@ class displayer(object):
             axes[i + 1].axis('off')
             axes[i + 1].title.set_text('step' + str(int(i)))
         
-        axes[-2].imshow(np.reshape(clustered_last_phase, (nrows, ncols)), cmap='hsv', vmin=0, vmax=2*np.pi)
+        axes[-2].imshow(np.reshape(clustered_last_phase, (nrows, ncols)), vmin=0, vmax=2*np.pi)
         axes[-2].axis('off')
         axes[-2].title.set_text('quantized')
 

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import ipdb
 
 def exinp_integrate_torch(phase, mask, transform, device):
     phase = phase.to(device)
@@ -85,10 +86,7 @@ def coupling_regularizer(coupling, mask, device):
          torch.bmm(torch.transpose(prod, 1, 2), mask) ** 2).squeeze().sum(1) * 0.5 / ((mask.sum(1) - 1) * mask.sum(1)).sum(1)
 
 
-def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
-    # Get image parameters
-
-    # Pixels per group
+def matt_loss1(phase, mask,transform, device='cpu'):
     num_group_el = mask.sum(-1)
     # Number of groups
     num_groups = (num_group_el > 0).sum(1).float()
@@ -99,19 +97,20 @@ def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     # Mask phase: dim 1 is group index
     masked_phase = phase.unsqueeze(1) * mask
     # Group real part. Note that the cosine sum is adjusted to account for erroneous cosine(0) from the mask
-    group_real = (torch.cos(masked_phase).sum(-1) - (img_size - num_group_el)) / per_group_norm
+    group_real = (torch.cos(masked_phase).sum(-1) - (img_size - num_group_el))
     # Group imag part
-    group_imag = torch.sin(masked_phase).sum(-1) / per_group_norm
+    group_imag = torch.sin(masked_phase).sum(-1)
 
-
-    # Mean field unnormalized per group
-    mean_field = (group_real**2 + group_imag**2)
+    # Group order. Modulus gradient is undefined at 0 so real gradient is calculated on squared modulus, but printed loss is true modulus. 
+    group_order = (group_real**2 + group_imag**2)
+    cosmetic_scalar = (torch.sqrt(group_order.detach()) - group_order).detach()
+    group_order = (group_order + cosmetic_scalar) / per_group_norm
 
     # Synch loss is 1 - mean_field averaged across batch
-    synch_loss = 1 - (mean_field.sum(1) / num_groups).mean()
+    synch_loss = 1 - (group_order.sum(1) / num_groups)
 
     # Mask for where group angle is undefined
-    und_mask = (group_real==0)*(group_imag==0) 
+    und_mask = (group_real==0)*(group_imag==0)
     # Temporarily replace imag part at masked indices
     tmp_group_imag = torch.where(und_mask, torch.ones_like(group_imag), group_imag)
 
@@ -119,17 +118,61 @@ def matt_loss_torch(phase, mask, eta=.5, device='cpu'):
     group_phase = torch.atan2(tmp_group_imag,group_real)
 
     # Mask all phase pairs where phase is defined
-    desynch_mask = ((1 - und_mask).unsqueeze(1) * (1 - und_mask).unsqueeze(2)).float()
+    desynch_mask = ((1 - und_mask.float()).unsqueeze(1) * (1 - und_mask.float()).unsqueeze(2))
 
     # Phase diffs
     group_phase_diffs = desynch_mask * torch.abs(torch.cos(group_phase.unsqueeze(1) - group_phase.unsqueeze(2)))**2
 
     # Desynch loss is frame potential between groups normalized to be between 0 and 1
-    desynch_loss = ((group_phase_diffs.sum((1,2)) - num_groups) / (num_groups**2 - num_groups)).mean()
+    desynch_loss = (group_phase_diffs.sum((1,2)) - .5*num_groups**2) * (2./num_groups**2)
 
     # Total loss is convex combination of the two losses
-    tot_loss = eta*synch_loss + (1-eta)*desynch_loss
-    return tot_loss, synch_loss, desynch_loss
+    tot_loss = .5*synch_loss + .5*desynch_loss
+    if tot_loss.mean() != tot_loss.mean():
+        ipdb.set_trace()
+
+    return tot_loss
+
+def matt_loss2(phase, mask,transform, device='cpu'):
+    num_group_el = mask.sum(-1)
+    # Number of groups
+    num_groups = (num_group_el > 0).sum(1).float()
+    # Normalization factor for each group, even if empty
+    per_group_norm = torch.where(num_group_el == 0, torch.ones_like(num_group_el), num_group_el)
+    # Image size
+    img_size = phase.shape[1]
+    # Mask phase: dim 1 is group index
+    masked_phase = phase.unsqueeze(1) * mask
+    # Group real part. Note that the cosine sum is adjusted to account for erroneous cosine(0) from the mask
+    group_real = (torch.cos(masked_phase).sum(-1) - (img_size - num_group_el))
+    # Group imag part
+    group_imag = torch.sin(masked_phase).sum(-1)
+
+    # Group order. Modulus gradient is undefined at 0 so real gradient is calculated on squared modulus, but printed loss is true modulus. 
+    group_order = (group_real**2 + group_imag**2)
+    cosmetic_scalar = (torch.sqrt(group_order.detach()) - group_order).detach()
+    group_order = (group_order + cosmetic_scalar) / per_group_norm
+
+    # Synch loss is 1 - mean_field averaged across batch
+    synch_loss = 1 - (group_order.sum(1) / num_groups)
+
+    phase_diffs = (torch.abs(torch.cos(phase.unsqueeze(2) - phase.unsqueeze(1))))**2
+
+    mask_unions = 1*(mask.unsqueeze(2) + mask.unsqueeze(1) > 0)
+    mask_unions_intersections = torch.einsum('bijk,bijl->bijkl',mask_unions,mask_unions)
+    masked_phase_diffs = phase_diffs.unsqueeze(1).unsqueeze(1) * mask_unions_intersections
+    Z = mask_unions_intersections.sum((3,4))
+    Z = torch.where(Z>0,Z,torch.ones_like(Z))
+
+    group_disorder = masked_phase_diffs.sum((3,4)) / Z
+    desynch_loss = (group_disorder.sum((1,2)) - .5*num_groups**2) * (2./num_groups**2)
+    
+    # Total loss is convex combination of the two losses
+    tot_loss = .5*synch_loss + .5*desynch_loss
+    if tot_loss.mean() != tot_loss.mean():
+        ipdb.set_trace()
+
+    return tot_loss
 
 def matt_loss_np(phase,mask,eta=.5):
     t = []
@@ -403,3 +446,24 @@ def calc_sbd(ins_seg_gt, ins_seg_pred):
     _dice1 = calc_bd(ins_seg_gt, ins_seg_pred)
     _dice2 = calc_bd(ins_seg_pred, ins_seg_gt)
     return min(_dice1, _dice2)
+
+def calc_pq(seg_gt, seg_pred, threshold=.5):
+
+    seg_gt = np.array([1*(seg_gt == i) for i in np.unique(seg_gt)])
+    seg_pred = np.array([1*(seg_pred == i) for i in np.unique(seg_pred)])
+
+    all_intersections = np.einsum('gi,pi->gpi',seg_gt,seg_pred)
+    all_unions = np.clip(seg_gt[:,np.newaxis,...] + seg_pred[np.newaxis,...],0,1)
+
+    all_IoU = all_intersections.sum(2) / all_unions.sum((2))
+    argmax_IoU= np.argmax(all_IoU,1)
+    max_IoU = np.take_along_axis(all_IoU, argmax_IoU[:,np.newaxis],axis=1)
+    
+    TP = ((max_IoU > threshold)*1)[:,np.newaxis].sum()
+    FN = seg_gt.shape[0] - TP
+    FP = seg_pred.shape[0] - TP
+
+    PQ = max_IoU.sum() / (TP + .5*FP + .5*FN)
+    return PQ
+
+

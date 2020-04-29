@@ -13,7 +13,7 @@ from tqdm import tqdm
 import display as disp
 import sys
 from distutils.util import strtobool
-from losses import calc_sbd
+from losses import calc_sbd, calc_pq
 from utils import *
 import ipdb
 import warnings
@@ -82,6 +82,7 @@ parser.add_argument('--clustering_algorithm',type=str,default='km')
 parser.add_argument('--transform', type=str, default='linear')
 parser.add_argument('--classify',type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--recurrent_classifier',type=lambda x:bool(strtobool(x)), default=False)
+parser.add_argument('--segmentation_metric', type=str, default='pq')
 
 args = parser.parse_args()
 args.kernel_size = [int(k) for k in args.kernel_size.split(',')]
@@ -114,7 +115,7 @@ if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 if not os.path.exists(model_dir):
     os.makedirs(model_dir)
-subprocess.call('rm -rf {}'.format(os.path.join(save_dir, '*')), shell=True)
+#subprocess.call('rm -rf {}'.format(os.path.join(save_dir, '*')), shell=True)
 
 if args.pretrained is True:
     model_files = glob.glob(os.path.join(model_dir, '*.pt'))
@@ -171,12 +172,12 @@ else:
 loss_history = []
 final_loss_history = []
 ns_history=[]
-sbd_history=[]
+acc_history=[]
 loss_history_test = []
 final_loss_history_test = []
 #long_loss_history_test = []
 ns_history_test=[]
-sbd_history_test=[]
+acc_history_test=[]
 epoch_history_test=[]
 coupling_history = []
 
@@ -189,6 +190,13 @@ if args.classify is True:
     params += [q3 for q3 in classifier_params]
 
 params = tuple(params)
+
+if args.segmentation_metric == 'sbd':
+   accuracy = calc_sbd
+elif args.segmentation_metric == 'pq':
+    accuracy = calc_pq
+else:
+    raise NotImplemented("The chosen segmentation metric is not recognized.")
 
 op = torch.optim.Adam(params, lr=args.learning_rate)
 
@@ -205,7 +213,7 @@ for epoch in range(args.train_epochs):
     l=0
     fl=0
     ns=0
-    sbd = 0
+    acc = 0
     cont_epoch = True
     PL_epoch = []
     clustering_epoch = []
@@ -225,7 +233,6 @@ for epoch in range(args.train_epochs):
 
         last_phase = phase_list_train[-1].cpu().detach().numpy()
         colored_mask = (np.expand_dims(np.expand_dims(np.arange(args.segments), axis=0), axis=-1) * mask.cpu().detach().numpy()).sum(1)
-        
         
         if args.one_image:
             if np.logical_and(epoch==0,step==0):
@@ -261,7 +268,7 @@ for epoch in range(args.train_epochs):
                 clustered_img, n_clusters = clustering(sample_phase, max_clusters=args.segments, algorithm=args.clustering_algorithm)
                 clustered_batch.append(clustered_img)
                 ns_batch.append(n_clusters)
-                sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+                acc += accuracy(clustered_batch[idx]+1, sample_mask+1)
             ns+=((np.array(ns_batch)==num_segments.cpu().numpy())*1).mean()
             display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
                 'train{}_{}'.format(epoch,step), args.rf_type)
@@ -319,15 +326,15 @@ for epoch in range(args.train_epochs):
         loss_history.append(l / (step+1))
         final_loss_history.append(fl / (step+1))
         ns_history.append(ns / (step+1))
-        sbd_history.append(sbd / ((1+ (step // args.show_every)) * args.batch_size))
+        acc_history.append(acc / ((1+ (step // args.show_every)) * args.batch_size))
    
     # Testing 
-    if (epoch) % args.eval_interval == 0:
+    if epoch  % args.eval_interval == 0:
         l=0
         fl=0
         ll=0
         ns=0
-        sbd = 0
+        acc = 0
         PL_epoch = []
         clustering_epoch = []
 
@@ -354,7 +361,7 @@ for epoch in range(args.train_epochs):
                         clustered_img, n_clusters = clustering(sample_phase, algorithm = args.clustering_algorithm, max_clusters=args.segments)
                         ns_batch.append(n_clusters)
                         clustered_batch.append(clustered_img)
-                        sbd += calc_sbd(clustered_batch[idx]+1, sample_mask+1)
+                        acc += accuracy(clustered_batch[idx]+1, sample_mask+1)
                     ns+=((np.array(ns_batch)==num_segments.cpu().numpy())*1).mean()
 
                 tavg_loss_test, final_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
@@ -419,7 +426,7 @@ for epoch in range(args.train_epochs):
 
         if args.show_every > 0:
             ns_history_test.append(ns / (step+1))
-            sbd_history_test.append(sbd / ((step+1) * args.batch_size))
+            acc_history_test.append(acc / ((step+1) * args.batch_size))
         epoch_history_test.append(epoch)
 
     # save file s
@@ -448,11 +455,11 @@ for epoch in range(args.train_epochs):
     plt.close()
 
     if args.show_every > 0:
-        plt.plot(sbd_history)
-        plt.plot(epoch_history_test, sbd_history_test)
-        plt.title('Symmetric Best Dice')
+        plt.plot(acc_history)
+        plt.plot(epoch_history_test, acc_history_test)
+        plt.title('Accuracy')
         plt.legend(['train', 'valid'])
-        plt.savefig(save_dir + '/sbd' + '.png')
+        plt.savefig(save_dir + '/acc' + '.png')
         plt.close()
 
         plt.plot(ns_history)
@@ -462,8 +469,8 @@ for epoch in range(args.train_epochs):
         plt.savefig(save_dir + '/ns' + '.png')
         plt.close()
 
-        np.save(os.path.join(save_dir, 'train_sbd.npy'), np.array(sbd_history))
-        np.save(os.path.join(save_dir, 'valid_sbd.npy'), np.array(sbd_history_test))
+        np.save(os.path.join(save_dir, 'train_acc.npy'), np.array(acc_history))
+        np.save(os.path.join(save_dir, 'valid_acc.npy'), np.array(acc_history_test))
         np.save(os.path.join(save_dir, 'train_ns.npy'), np.array(ns_history))
         np.save(os.path.join(save_dir, 'valid_ns.npy'), np.array(ns_history_test))
 
