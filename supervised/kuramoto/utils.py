@@ -213,6 +213,10 @@ def critic_dist(num_cn):
         raise ValueError("Number is not included, try smaller one")
 
 
+def critical_dist(num_cn):
+    return int(np.ceil((1+np.sqrt(num_cn+1))/2))
+
+
 def get_cn(num_cn, coord, img_side, sw):
     dist = critic_dist(num_cn)
     dist_list = np.concatenate([np.tile(np.arange(1, dist).reshape(dist - 1, -1), 2),
