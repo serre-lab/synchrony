@@ -5,10 +5,10 @@ import subprocess
 import json, ast
 import sys
 
-#os.environ["CUDA_VISIBLE_DEVICES"]='0,1,2'
+os.environ["CUDA_VISIBLE_DEVICES"]='1'
 
 meta_parser = argparse.ArgumentParser()
-meta_parser.add_argument('--name', type=str, default='Big_MNIST_Baseline')
+meta_parser.add_argument('--name', type=str, default='Sep_MNIST_ODE_exploss_t0')
 meta_args = meta_parser.parse_args()
 
 print(meta_args)

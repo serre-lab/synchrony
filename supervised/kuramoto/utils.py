@@ -131,54 +131,58 @@ def kura_param_show(coupling, omega, img_side, path, name):
 
 def generate_connectivity(num_cn, img_side,
                           sw=False, num_global_control=0,
-                          p_rewire=0.5, rf_type='arange'):
-    # Generate local coupling
-    if num_global_control > 0:
-        s = np.sqrt(num_global_control)
-        if (int(s) - s) != 0.:
-            raise ValueError('Number of global oscillator should be a square number')
-        else:
-            s = int(s)
-        if (img_side % s) != 0.:
-            raise ValueError('Number of global oscillator should be a dividend of img_side')
-
-        connectivity = np.zeros((img_side ** 2, num_cn + 1))
-        seq = np.arange(img_side ** 2)
-        if rf_type == 'random':
-            np.random.shuffle(seq)
-        elif rf_type == 'arange':
-            seq = np.concatenate(np.split(np.stack(np.split(seq.reshape(img_side, img_side), s, axis=1),
-                                                   axis=0), s, axis=1), axis=0).reshape(-1)
-        else:
-            raise ValueError('Receptive field type not understood')
-    else:
-        connectivity = np.zeros((img_side ** 2, num_cn))
-
-    # Generate local connectivity
-    for i in tqdm(range(img_side ** 2)):
-        count = 0
-        x_1 = int(i % img_side)
-        y_1 = int(i // img_side)
-        connectivity[i, :num_cn] += get_cn(num_cn, (x_1, y_1), img_side, sw)
-
-        # rewire when small world
-        if sw:
-            change = sorted(range(num_cn), key=lambda k: np.random.random())[:int(num_cn*p_rewire)]
-            connectivity[i, ...][change] = \
-                sorted(np.delete(range(img_side ** 2), connectivity[i, :-int(num_global_control > 1)]),
-                       key=lambda k: np.random.random())[:int(num_cn*p_rewire)]
-        # add one when hierarchy
-        if num_global_control > 0:
-            connectivity[i, -1] = np.argwhere(seq == i)[0][0] // int(img_side ** 2 / num_global_control) + img_side ** 2
-
-    if num_global_control > 0:
-        global_connectivity = np.stack(np.split(seq, num_global_control, axis=0), axis=0)
-        inner = np.tile(np.expand_dims(np.arange(num_global_control), axis=0),
-                        (num_global_control, 1))[np.where(np.eye(num_global_control) == 0)].reshape(num_global_control,
-                                                                                                    -1) + img_side ** 2
-        global_connectivity = np.concatenate([global_connectivity, inner], axis=1)
-    else:
+                          p_rewire=0.5, rf_type='arange',all_to_all=False):
+    if all_to_all == True:
+        connectivity = np.ones((img_side, num_cn))
         global_connectivity = None
+    else:
+        # Generate local coupling
+        if num_global_control > 0:
+            s = np.sqrt(num_global_control)
+            if (int(s) - s) != 0.:
+                raise ValueError('Number of global oscillator should be a square number')
+            else:
+                s = int(s)
+            if (img_side % s) != 0.:
+                raise ValueError('Number of global oscillator should be a dividend of img_side')
+
+            connectivity = np.zeros((img_side ** 2, num_cn + 1))
+            seq = np.arange(img_side ** 2)
+            if rf_type == 'random':
+                np.random.shuffle(seq)
+            elif rf_type == 'arange':
+                seq = np.concatenate(np.split(np.stack(np.split(seq.reshape(img_side, img_side), s, axis=1),
+                                                       axis=0), s, axis=1), axis=0).reshape(-1)
+            else:
+                raise ValueError('Receptive field type not understood')
+        else:
+            connectivity = np.zeros((img_side ** 2, num_cn))
+
+        # Generate local connectivity
+        for i in tqdm(range(img_side ** 2)):
+            count = 0
+            x_1 = int(i % img_side)
+            y_1 = int(i // img_side)
+            connectivity[i, :num_cn] += get_cn(num_cn, (x_1, y_1), img_side, sw)
+
+            # rewire when small world
+            if sw:
+                change = sorted(range(num_cn), key=lambda k: np.random.random())[:int(num_cn*p_rewire)]
+                connectivity[i, ...][change] = \
+                    sorted(np.delete(range(img_side ** 2), connectivity[i, :-int(num_global_control > 1)]),
+                           key=lambda k: np.random.random())[:int(num_cn*p_rewire)]
+            # add one when hierarchy
+            if num_global_control > 0:
+                connectivity[i, -1] = np.argwhere(seq == i)[0][0] // int(img_side ** 2 / num_global_control) + img_side ** 2
+
+        if num_global_control > 0:
+            global_connectivity = np.stack(np.split(seq, num_global_control, axis=0), axis=0)
+            inner = np.tile(np.expand_dims(np.arange(num_global_control), axis=0),
+                            (num_global_control, 1))[np.where(np.eye(num_global_control) == 0)].reshape(num_global_control,
+                                                                                                        -1) + img_side ** 2
+            global_connectivity = np.concatenate([global_connectivity, inner], axis=1)
+        else:
+            global_connectivity = None
     return connectivity, global_connectivity
 
 

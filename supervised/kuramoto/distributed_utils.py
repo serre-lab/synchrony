@@ -132,7 +132,7 @@ def run(rank, args, connectivity):
 
             #Loss computation
             tavg_loss = criterion(phase_list_train[-1 * args.record_steps:], mask, args.transform, loss=args.loss_version, valid=False)
-            tavg_loss = tavg_loss.mean() / norm
+            tavg_loss = tavg_loss.mean() #/ norm
             print('loss', tavg_loss)
 
             if coupling_train is not None:
@@ -148,7 +148,8 @@ def run(rank, args, connectivity):
                 nfe_forward = model.osci.nfe
                 model.osci.nfe = 0
                 coupling_train.backward(gradient=model.osci.ODEDynamic.couplings.grad,retain_graph=True)
-                omega_train.backward(gradient=model.osci.ODEDynamic.omega.grad)
+                if omega_train is not None:
+                    omega_train.backward(gradient=model.osci.ODEDynamic.omega.grad)
             # Send and average gradients across models
             average_gradients(model)
             op.step()
@@ -156,7 +157,7 @@ def run(rank, args, connectivity):
 
             print('Rank ', dist.get_rank(), ', epoch ', epoch, ': ', tavg_loss.data.cpu().numpy())
 
-            if step % args.show_every == 0 and args.rank == 0:
+            if step % args.show_every == 0 and args.rank==0:
                 sbd_ = display_master(last_phase,
                                phase_list_train,batch,
                                mask,
@@ -171,7 +172,7 @@ def run(rank, args, connectivity):
                                displayer)
 
                 sbd += sbd_
-                sbd_history.append(sbd / ((1 + (step // args.show_every)) * (args.batch_size/args.world_size)))
+                sbd_history.append(sbd / ((1 +(step//args.show_every))*(args.batch_size/args.world_size)))
 
                 save_plot(args, epoch,
                           model, op,
@@ -188,9 +189,10 @@ def run(rank, args, connectivity):
 
         if (epoch + 1) % args.eval_interval == 0:
             l_test, sbd_test = testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer)
-            loss_history_test.append(l_test)
-            sbd_history_test.append(sbd_test)
-            epoch_history_test.append(epoch*len(training_loader)/(args.batch_size*args.world_size))
+            if args.rank == 0:
+                loss_history_test.append(l_test)
+                sbd_history_test.append(sbd_test)
+                epoch_history_test.append(epoch*len(training_loader))
 
 
 
@@ -250,8 +252,8 @@ def validate(model, rank, world_size):
 
 def init_processes(rank, args, connectivity, func, backend='nccl'):
     """ Initialize the distributed environment. """
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = '29500'
+    os.environ['MASTER_ADDR'] = '127.0.0.3'
+    os.environ['MASTER_PORT'] = '29502'
     dist.init_process_group(backend, rank=rank, world_size=args.world_size)
     torch.manual_seed(42)
     func(rank, args, connectivity)
@@ -295,7 +297,7 @@ def testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer
                 sbd += calc_sbd(clustered_batch[idx] + 1, sample_mask + 1)
 
             tavg_loss_test = criterion(phase_list_test[-1 * args.record_steps:], mask, args.transform, loss=args.loss_version, valid=True)
-            tavg_loss_test = tavg_loss_test.mean() / norm
+            tavg_loss_test = tavg_loss_test.mean() #/ norm
             if coupling_test is not None:
                 tavg_loss_test += args.sparsity_weight * torch.abs(coupling_test).mean()
             if omega_test is not None:
@@ -311,7 +313,7 @@ def testing(epoch, rank, args, model, criterion, norm, testing_loader, displayer
 
             # if step*args.batch_size > num_test:
             #    break
-    return l/(step + 1), sbd/((step + 1) *(args.batch_size/args.world_size))
+    return l/(step + 1), sbd/((step + 1)*(args.batch_size/args.world_size))
 
 
 def save_plot(args,epoch,

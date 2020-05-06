@@ -348,7 +348,7 @@ class base_conv(KuraNet):
         """
         For various image size, feature maps are all in the same shape as input
         """
-        super(base_conv, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+        super(base_conv, self).__init__(args, args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
 
         self.num_cn = args.num_cn
         self.num_global = num_global
@@ -394,7 +394,6 @@ class base_conv(KuraNet):
         # x = self.conv_final(x)
         x = self.dropout(x.reshape(x.shape[0], -1)).reshape(x.shape)
         omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
-
         if self.num_global == 0:
             x = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
                                               (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
@@ -491,7 +490,7 @@ class criterion(nn.Module):
         self.classify = classify
         if self.classify: 
             self.classifier = read_out(in_size, recurrent=recurrent_classifier).to(device)
-            self.classifier_loss = torch.nn.BCEWithLogitsLoss()
+            self.classifier_loss = torch.nn. ()
         self.recurrent_classifier = recurrent_classifier
         self.degree = degree
         self.rank = rank
