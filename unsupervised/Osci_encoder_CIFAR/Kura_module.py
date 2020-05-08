@@ -205,30 +205,68 @@ class ODEDynamic(nn.Module):
         self.nfe += 1
         return delta_phase
 
+class ODEDynamic_general(nn.Module):
+    """
+    torch.nn.Module that defines the infinitesimal evolution of the ODE : df/dt = module(t,\theta)
+    - Handles batchs of images by flattening the bacth dim and treat everything as a single ODE
+    - Requires the update of the couplings parameters at every call to get the gradient d(couplings)/dL
+    """
 
-class ODE_conv(nn.Module):
-    def __init__(self, args, connectivity, rank,
-                                        update_rate=1, anneal=0, time_steps=20,
-                                        phase_initialization='random', walk_step=20,
-                                        intrinsic_frequencies='zero', device='cpu'):
+    def __init__(self, args):
+        super(ODEDynamic_general, self).__init__()
+        # self.couplings = torch.nn.Parameter(torch.Tensor([args.batch_size,args.img_side,args.img_side]),requires_grad=True)
+        self.nfe = 0
+
+    def update(self, vector_field, omega):
+        self.couplings = torch.nn.Parameter(vector_field, requires_grad=True)
+        if omega is not None:
+            self.omega = torch.nn.Parameter(omega, requires_grad=True)
+        else:
+            self.omega = None
+
+    def forward(self, t, phase):
+        phase = phase.reshape(self.couplings.shape[0], -1).float()
+        n = torch.abs(torch.sign(self.couplings)).sum(2)
+        delta_phase = torch.bmm(self.couplings,phase.unsqueeze(2)).squeeze(2) / n
+        if self.omega is not None:
+            delta_phase = delta_phase.flatten() + self.omega.flatten()
+        else:
+            delta_phase = delta_phase.flatten()
+        self.nfe += 1
+        return delta_phase
+
+#couplings are now defining a vector field
+
+
+class Osci_AE(nn.Module):
+    def __init__(self, args, connectivity,
+                 update_rate=1, anneal=0, time_steps=20,
+                 phase_initialization='random', walk_step=20,
+                 intrinsic_frequencies='zero', device='cpu'):
+        super(Osci_AE, self).__init__()
         """
         nn.module object for passing to odeint module for various image size, feature maps are all in the same shape as input
         """
-        super(ODE_conv, self).__init__()
-
-
+        self.args = args
         self.n_osci = args.n_osci
-        self.num_global = args.num_global
+        self.num_global = args.num_global_control
         self.connectivity = connectivity
-        self.rank = rank
-        self.osci = km(self.n_osci, update_rate=update_rate, batch_size=args.batch_size,
+        self.rank = 0
+        self.osci = Kuramoto(self.n_osci, update_rate=update_rate, batch_size=args.batch_size,
                        anneal=anneal, time_steps=time_steps,
-                       connectivity0=connectivity, num_global=num_global,
+                       connectivity0=connectivity, num_global=self.num_global,
                        phase_initialization=phase_initialization,
                        walk_step=walk_step, device=device, max_time=args.max_time,
                        intrinsic_frequencies=intrinsic_frequencies)
         self.evolution = self.osci.evolution
-        self.ODE_evolution = self.osci.ODE_evolution
+        if args.dynamic_type == 'linear':
+            self.osci.ODEDynamic = ODEDynamic_linear(args)
+        elif args.dynamic_type == 'kura':
+            self.osci.ODEDynamic = ODEDynamic(args)
+        elif args.dynamic_type == 'general':
+            self.osci.ODEDynamic = ODEDynamic_general(args)
+        else:
+            raise ValueError("Dynamic not implemented")
 
         self.num_cn = args.num_cn
         self.img_side = args.img_side
@@ -239,62 +277,59 @@ class ODE_conv(nn.Module):
         self.args = args
         self.sigma = nn.Sigmoid()
         self.dropout = nn.Dropout(args.dropout_p)
+        self.channel_num = 3
+        self.kernel_num = 1024
+        self.feature_size = self.img_side // 8
+        self.feature_volume = self.kernel_num * (self.feature_size ** 2)
 
+        self.encoder = nn.Sequential(
+            self._conv(self.channel_num, self.kernel_num // 4),
+            self._conv(self.kernel_num // 4, self.kernel_num // 2),
+            self._conv(self.kernel_num // 2, self.kernel_num))
 
-        start_filts = int(args.start_filts / 2)
-        for i in range(self.depth):
-            ins = args.in_channels if i == 0 else outs
-            outs = start_filts * (2 ** i)
-            conv = nn.Conv2d(ins, outs, kernel_size=args.kernel_size[0], stride=1,
-                             padding=int((args.kernel_size[0] - 1) / 2))
-            self.convs.append(conv)
+        self.fc1 = nn.Linear(self.feature_volume, args.n_osci * args.num_cn)
+        self.fc2 = nn.Linear(args.n_osci, self.feature_volume)
+        self.batch_norm = nn.BatchNorm2d(self.kernel_num)
 
-        self.convs = nn.ModuleList(self.convs)
+        self.decoder = nn.Sequential(
+            self._deconv(self.kernel_num, self.kernel_num // 2),
+            self._deconv(self.kernel_num // 2, self.kernel_num // 4),
+            self._deconv(self.kernel_num // 4, self.channel_num))
+        # ======
+        # Layers
+        # ======
 
-        self.out_channels = outs
-        if args.intrinsic_frequencies == 'conv':
-            self.omega = nn.Linear(int(self.out_channels * args.img_side ** 2), int(args.img_side ** 2))
-        else:
-            self.omega = None
+    def _conv(self, channel_size, kernel_num):
+        return nn.Sequential(
+            nn.Conv2d(channel_size, kernel_num,kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(kernel_num),
+            nn.ReLU())
 
-        if num_global == 0:
-            self.linear = nn.Linear(int((self.out_channels / self.split) * (self.img_side ** 2)),
-                                    int(((self.img_side ** 2) / self.split) * self.num_cn))
-        else:
-            self.linear1 = nn.Linear(int(((self.out_channels - 1) / self.split) * (self.img_side ** 2)),
-                                     int(((self.img_side ** 2) / self.split) * (self.num_cn + 1)))
+    def _deconv(self, channel_num, kernel_num):
+        return nn.Sequential(
+            nn.ConvTranspose2d(channel_num, kernel_num,kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(kernel_num),
+            nn.ReLU())
 
-            self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global)
-        self.reset_params()
+    def encode(self, x):
+        h = self.encoder(x).view(-1, self.feature_volume)
+        couplings = self.fc1(h).reshape(-1, self.n_osci, self.num_cn)
+        couplings = couplings / couplings.norm(p=2, dim=2).unsqueeze(2)
+        return couplings
 
-        if args.ode_train == True:
-            self.osci.ODEDynamic = ODEDynamic(args)
+    def decode(self, phi):
+        h = self.fc2(phi).view(-1,self.kernel_num,self.feature_size,self.feature_size)
+        h = self.batch_norm(h)
+        x_rec = self.decoder(F.relu(h))
+        return slef.sigma(x_rec)
 
     def forward(self, x):
-        x_in = x
-        for i, module in enumerate(self.convs):
-            x = torch.tanh(module(x))  # if i < self.depth - 1 else torch.sigmoid(module(x))
-        x = self.dropout(x.reshape(x.shape[0],-1)).reshape(x.shape)
-        omega = self.sigma(self.omega(x.view(x.size(0), -1))) if self.omega is not None else None
-        if self.num_global == 0:
-            couplings = self.linear(x.reshape(-1, int((self.out_channels / self.split) *
-                                              (self.img_side ** 2)))).reshape(-1, self.img_side ** 2, self.num_cn)
-
-            couplings = couplings / couplings.norm(p=2, dim=2).unsqueeze(2)
-            phase_list, couplings = self.ODE_evolution(couplings, omega=omega, method=self.args.solver)
-            return phase_list, couplings, omega
-
-    @staticmethod
-    def weights_init(m):
-        if isinstance(m, nn.Conv2d):
-            nn.init.xavier_normal_(m.weight)
-            nn.init.constant_(m.bias, 0)
-
-    def reset_params(self):
-        for i, m in enumerate(self.modules()):
-            self.weights_init(m)
-
-
+        couplings = self.encode(x)
+        phase_list , couplings = self.ODE_evolution(couplings, omega=None, method=self.args.solver)
+        reco=[]
+        for phase in phase_list[-1*args.record_steps:]:
+            reco.append(self.decode(phase))
+        return reco, phase_list, couplings
 
 if __name__ == '__main__':
     print('numpy version kuramoto dynamics simulation tool\n')

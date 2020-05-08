@@ -16,12 +16,12 @@ import sys
 
 def plot_evolution(recon_batch,data,epoch,args):
     n = min(data.size(0), 10)
-    recon_batch = torch.cat(recon_batch,dim=1)[:n].view(n,20,28,28)
-    comparison = torch.cat([recon_batch,data[:n]],dim=1).view(-1,1,28,28)
+    recon_batch = torch.cat(recon_batch,dim=1)[:n].view(n,-1,args.channels_im,args.img_side,args.img_side)
+    comparison = torch.cat([recon_batch,data[:n].view(n,1,args.channels_im,args.img_side,args.img_side)],dim=1).view(-1,args.channels_im,args.img_side,args.img_side)
     save_dir = os.path.join(args.save_dir, 'evolution_' + str(epoch) + '.png')
     save_image(comparison.cpu(), save_dir, nrow=20+1)
 
-def phase_evol(phase_list,data,epoch,args,masks=None, save_name=None):
+def phase_evol(phase_list,epoch,args,masks=None,save_name=None):
     plt.style.use('seaborn-darkgrid')
     if masks is not None:
         group_num = self.masks.shape[1]
@@ -45,7 +45,7 @@ def phase_evol(phase_list,data,epoch,args,masks=None, save_name=None):
     else:
         phases = torch.stack(phase_list,2)[0].detach().cpu().numpy()
         for i in range(phases.shape[0]):
-            plt.plot(torch.linspace(0., 100, 20),phases[i])
+            plt.plot(torch.linspace(0., args.max_time, args.time_steps),phases[i])
         plt.xlabel('Time')
         plt.ylabel('Phase')
         plt.title('Phase Evolution')
@@ -123,10 +123,11 @@ def loss_display(path):
                 loss = np.load(os.path.join(exp,file),allow_pickle=True)
                 loss =np.convolve(loss, np.ones(N) / N, mode='full')[30:-30]
                 ax.plot(loss,label=exp.split('/')[-1]+'train')
-            if file == 'loss_test.npy':
-                loss = np.load(os.path.join(exp, file),allow_pickle=True)
-                loss = np.convolve(loss, np.ones(N) / N, mode='full')[30:-100]
-                ax.plot(np.linspace(0,9000,len(loss)),loss, label=exp.split('/')[-1] + 'test')
+            #if file == 'loss_test.npy':
+            #    loss = np.load(os.path.join(exp, file),allow_pickle=True)
+            #    loss = np.convolve(loss, np.ones(N) / N, mode='full')[30:-100]
+            #    ax.plot(np.linspace(0,9000,len(loss)),loss, label=exp.split('/')[-1] + 'test')
     plt.legend()
-    plt.savefig(path+'/loss.png',dpi=200)
+    ax.set_ylim([50, 100])
+    plt.savefig(path+'/loss_4.png',dpi=200)
     plt.show()

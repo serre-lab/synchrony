@@ -48,7 +48,7 @@ class Kuramoto(object):
         self.eps = update_rate
         self.anneal = anneal
         self.time_steps = time_steps
-        self.integration_time = torch.linspace(0., max_time, 20).float()
+        self.integration_time = torch.linspace(0., max_time, time_steps).float()
 
         if update_fn_number == 1:
             self.update = self._update1
@@ -67,6 +67,9 @@ class Kuramoto(object):
             self.phase_0 = lambda b: 2 * np.pi * torch.rand((self.batch_size, self.N + self.gN)).float()
         elif initialization == 'fixed':
             self.current_phase = 2 * np.pi * torch.rand((1, self.N + self.gN)).float()
+            self.phase_0 = lambda b: self.current_phase.repeat(b, 1)
+        elif initialization == 'fixed_unif':
+            self.current_phase = 2*torch.rand((1, self.N + self.gN)).float() -1.
             self.phase_0 = lambda b: self.current_phase.repeat(b, 1)
         elif initialization == 'gaussian':
             self.phase_0 = lambda b: torch.normal(0., .1, (b, self.N + self.gN)).float()
@@ -270,31 +273,85 @@ class ODEDynamic_general(nn.Module):
         self.nfe += 1
         return delta_phase
 
-#couplings are now defining a vector field
+#couplings are now defining a linear vector field
 
+class ODEDynamic_cosine(nn.Module):
+    """
+    torch.nn.Module that defines the infinitesimal evolution of the ODE : df/dt = module(t,\theta)
+    - Handles batchs of images by flattening the bacth dim and treat everything as a single ODE
+    - Requires the update of the couplings parameters at every call to get the gradient d(couplings)/dL
+    """
 
+    def __init__(self, args):
+        super(ODEDynamic_cosine, self).__init__()
+        # self.couplings = torch.nn.Parameter(torch.Tensor([args.batch_size,args.img_side,args.img_side]),requires_grad=True)
+        self.nfe = 0
 
+    def update(self, vector_field, omega):
+        self.couplings = torch.nn.Parameter(vector_field, requires_grad=True)
+        if omega is not None:
+            self.omega = torch.nn.Parameter(omega, requires_grad=True)
+        else:
+            self.omega = None
 
+    def forward(self, t, phase):
+        phase = phase.reshape(self.couplings.shape[0], -1).float()
+        n = torch.abs(torch.sign(self.couplings)).sum(2)
+        delta_phase = torch.bmm(self.couplings,torch.cos(phase).unsqueeze(2)).squeeze(2) / n
+        if self.omega is not None:
+            delta_phase = delta_phase.flatten() + self.omega.flatten()
+        else:
+            delta_phase = delta_phase.flatten()
+        self.nfe += 1
+        return delta_phase
 
+class ODEDynamic_time(nn.Module):
+    """
+    torch.nn.Module that defines the infinitesimal evolution of the ODE : df/dt = module(t,\theta)
+    - Handles batchs of images by flattening the bacth dim and treat everything as a single ODE
+    - Requires the update of the couplings parameters at every call to get the gradient d(couplings)/dL
+    """
 
+    def __init__(self, args):
+        super(ODEDynamic_time, self).__init__()
+        # self.couplings = torch.nn.Parameter(torch.Tensor([args.batch_size,args.img_side,args.img_side]),requires_grad=True)
+        self.nfe = 0
 
-class Osci_AE(nn.Module):
+    def update(self, vector_field, omega):
+        self.couplings = torch.nn.Parameter(vector_field, requires_grad=True)
+        if omega is not None:
+            self.omega = torch.nn.Parameter(omega, requires_grad=True)
+        else:
+            self.omega = None
+
+    def forward(self, t, phase):
+        phase = phase.reshape(self.couplings.shape[0], -1).float()
+        n = torch.abs(torch.sign(self.couplings)).sum(2)
+        delta_phase = torch.bmm(self.couplings*t,torch.cos(phase).unsqueeze(2)).squeeze(2) / n
+        if self.omega is not None:
+            delta_phase = delta_phase.flatten() + self.omega.flatten()
+        else:
+            delta_phase = delta_phase.flatten()
+        self.nfe += 1
+        return delta_phase
+
+class AutoencODE(nn.Module):
     def __init__(self, args, connectivity,
                  update_rate=1, anneal=0, time_steps=20,
                  phase_initialization='random', walk_step=20,
                  intrinsic_frequencies='zero', device='cpu'):
-        super(Osci_AE, self).__init__()
+        super(AutoencODE, self).__init__()
         """
         nn.module object for passing to odeint module for various image size, feature maps are all in the same shape as input
         """
-        super(Osci_AE, self).__init__()
+        super(AutoencODE, self).__init__()
         self.args = args
         self.n_osci = args.n_osci
         self.num_global = args.num_global_control
         self.connectivity = connectivity
         self.rank = 0
         self.osci = Kuramoto(self.n_osci, update_rate=update_rate, batch_size=args.batch_size,
-                       anneal=anneal, time_steps=time_steps,
+                       anneal=anneal, time_steps=args.time_steps,
                        connectivity0=connectivity, num_global=self.num_global,
                        phase_initialization=phase_initialization,
                        walk_step=walk_step, device=device, max_time=args.max_time,
@@ -306,12 +363,9 @@ class Osci_AE(nn.Module):
         self.img_side = args.img_side
         if self.num_global > 0:
             self.out_channels += 1
-        self.split = args.split
-        self.depth = args.depth
         self.args = args
-        self.sigma = nn.Sigmoid()
+        self.sigma = nn.Tanh()
         self.dropout = nn.Dropout(args.dropout_p)
-
 
         self.fc1 = nn.Linear(784, 400)
         self.fc21 = nn.Linear(400, args.n_osci*args.num_cn)
@@ -323,20 +377,19 @@ class Osci_AE(nn.Module):
             self.osci.ODEDynamic = ODEDynamic_linear(args)
         elif args.dynamic_type == 'kura':
             self.osci.ODEDynamic = ODEDynamic(args)
+        elif args.dynamic_type == 'cosine':
+            self.osci.ODEDynamic = ODEDynamic_cosine(args)
         elif args.dynamic_type == 'general':
             self.osci.ODEDynamic = ODEDynamic_general(args)
+        elif args.dynamic_type == 'time':
+            self.osci.ODEDynamic = ODEDynamic_time(args)
         else:
             raise ValueError("Dynamic not implemented")
 
     def encode(self, x):
 
         h1 = F.relu(self.fc1(x))
-        return self.fc21(h1)  #, self.fc22(h1)
-
-    #def reparameterize(self, mu, logvar):
-    #    std = torch.exp(0.5*logvar)
-    #    eps = torch.randn_like(std)
-    #    return mu + eps*std
+        return self.fc21(h1)
 
     def decode(self, z):
         h3 = F.relu(self.fc3(z))
@@ -345,6 +398,7 @@ class Osci_AE(nn.Module):
     def forward(self, x):
 
         couplings = self.encode(x.view(-1, 784)).reshape(-1, self.n_osci, self.num_cn)
+        #couplings = self.sigma(couplings)
         couplings = couplings / couplings.norm(p=2, dim=2).unsqueeze(2)
         omega=None
         phase_list , couplings = self.ODE_evolution(couplings, omega=omega, method=self.args.solver)
@@ -370,6 +424,128 @@ class Osci_AE(nn.Module):
             for phase in phase_list:
                 reco.append(self.decode(phase))
             return reco, phase_list, couplings
+
+
+class AutoencODE_CIFAR(nn.Module):
+    def __init__(self, args, connectivity,
+                 update_rate=1, anneal=0, time_steps=20,
+                 phase_initialization='random', walk_step=20,
+                 intrinsic_frequencies='zero', device='cpu'):
+        super(AutoencODE_CIFAR, self).__init__()
+        """
+        nn.module object for passing to odeint module for various image size, feature maps are all in the same shape as input
+        """
+        self.args = args
+        self.n_osci = args.n_osci
+        self.num_global = args.num_global_control
+        self.connectivity = connectivity
+        self.rank = 0
+        self.osci = Kuramoto(self.n_osci, update_rate=update_rate, batch_size=args.batch_size,
+                       anneal=anneal, time_steps=time_steps,
+                       connectivity0=connectivity, num_global=self.num_global,
+                       phase_initialization=phase_initialization,
+                       walk_step=walk_step, device=device, max_time=args.max_time,
+                       intrinsic_frequencies=intrinsic_frequencies)
+        self.evolution = self.osci.evolution
+        self.ODE_evolution = self.osci.ODE_evolution
+        if args.dynamic_type == 'linear':
+            self.osci.ODEDynamic = ODEDynamic_linear(args)
+        elif args.dynamic_type == 'kura':
+            self.osci.ODEDynamic = ODEDynamic(args)
+        elif args.dynamic_type == 'general':
+            self.osci.ODEDynamic = ODEDynamic_general(args)
+        else:
+            raise ValueError("Dynamic not implemented")
+
+        self.num_cn = args.num_cn
+        self.img_side = args.img_side
+        if self.num_global > 0:
+            self.out_channels += 1
+        self.args = args
+        self.sigma = nn.Sigmoid()
+        self.dropout = nn.Dropout(args.dropout_p)
+        self.channel_num = 3
+        self.kernel_num = 1024
+        self.feature_size = self.img_side // 8
+        self.feature_volume = self.kernel_num * (self.feature_size ** 2)
+
+        self.encoder = nn.Sequential(
+            self._conv(self.channel_num, self.kernel_num // 4),
+            self._conv(self.kernel_num // 4, self.kernel_num // 2),
+            self._conv(self.kernel_num // 2, self.kernel_num))
+
+        self.fc1 = nn.Linear(self.feature_volume, args.n_osci * args.num_cn)
+        self.fc2 = nn.Linear(args.n_osci, self.feature_volume)
+        self.batch_norm = nn.BatchNorm2d(self.kernel_num)
+
+        self.decoder = nn.Sequential(
+            self._deconv(self.kernel_num, self.kernel_num // 2),
+            self._deconv(self.kernel_num // 2, self.kernel_num // 4),
+            self._deconv(self.kernel_num // 4, self.channel_num))
+        # ======
+        # Layers
+        # ======
+
+    def _conv(self, channel_size, kernel_num):
+        return nn.Sequential(
+            nn.Conv2d(channel_size, kernel_num,kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(kernel_num),
+            nn.ReLU())
+
+    def _deconv(self, channel_num, kernel_num):
+        return nn.Sequential(
+            nn.ConvTranspose2d(channel_num, kernel_num,kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(kernel_num),
+            nn.ReLU())
+
+    def encode(self, x):
+        h = self.encoder(x).view(-1, self.feature_volume)
+        couplings = self.fc1(h).reshape(-1, self.n_osci, self.num_cn)
+        couplings = couplings / couplings.norm(p=2, dim=2).unsqueeze(2)
+        return couplings
+
+    def decode(self, phi):
+        h = self.fc2(phi).view(-1,self.kernel_num,self.feature_size,self.feature_size)
+        h = self.batch_norm(h)
+        x_rec = self.decoder(F.relu(h))
+        return x_rec
+
+    def forward(self, x):
+        couplings = self.encode(x)
+        phase_list , couplings = self.ODE_evolution(couplings, omega=None, method=self.args.solver)
+        reco=[]
+        for phase in phase_list:
+            reco.append(self.decode(phase))
+        return reco, phase_list, couplings
+
+class AE(nn.Module):
+    def __init__(self):
+        super(VAE, self).__init__()
+
+        self.fc1 = nn.Linear(784, 400)
+        self.fc2bis = nn.Linear(400, 256)
+        self.fc21 = nn.Linear(256, 16)
+        self.fc3 = nn.Linear(16, 400)
+        self.fc4 = nn.Linear(400, 784)
+
+    def encode(self, x):
+        h1 = F.relu(self.fc1(x))
+        h2 = F.relu(self.fc2bis(h1))
+        return self.fc21(h2)#, self.fc22(h2)
+
+    #def reparameterize(self, mu, logvar):
+    #    std = torch.exp(0.5 * logvar)
+    #   eps = torch.randn_like(std)
+    #    return mu + eps * std
+
+    def decode(self, z):
+        h3 = F.relu(self.fc3(z))
+        return torch.sigmoid(self.fc4(h3))
+
+    def forward(self, x):
+        z = self.encode(x.view(-1, 784))
+        #z = self.reparameterize(mu, logvar)
+        return self.decode(z), z
 
 
 if __name__ == '__main__':
