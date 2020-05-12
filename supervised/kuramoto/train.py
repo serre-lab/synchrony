@@ -271,7 +271,7 @@ for epoch in range(args.train_epochs):
                 acc += accuracy(clustered_batch[idx]+1, sample_mask+1)
             ns+=((np.array(ns_batch)==num_segments.cpu().numpy())*1).mean()
             display(displayer, phase_list_train, batch, mask, clustered_batch, coupling_train, omega_train, args.img_side, args.segments, save_dir,
-                'train{}_{}'.format(epoch,step), args.rf_type)
+                'train{}_{}'.format(epoch,step), args.rf_type, verbosity=args.verbosity)
         if step % 600 == 0 and args.graph_stats:
             NP_initialized = False
             if args.one_image:
@@ -377,7 +377,7 @@ for epoch in range(args.train_epochs):
                     # visualize validation and save
                     # validation example, save its coupling matrix
                     display(displayer, phase_list_test, batch, mask, clustered_batch, coupling_test, omega_test, args.img_side, args.segments, save_dir, 
-                    'test{}_{}'.format(epoch, step), args.rf_type)
+                    'test{}_{}'.format(epoch, step), args.rf_type, verbosity=args.verbosity)
                 #if step*args.batch_size > num_test:
                 #    break
                 if step % 600 == 0 and args.graph_stats:

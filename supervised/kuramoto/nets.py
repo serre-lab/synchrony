@@ -32,6 +32,8 @@ def load_net(args, connectivity, num_global):
         return simple_conv(args, connectivity, num_global)
     elif args.model_name == 'base_conv':
         return base_conv(args, connectivity, num_global)
+    elif args.model_name == 'neighbor_conv':
+        return neighbor_conv(args, connectivity, num_global)
     elif args.model_name == 'base_noKura_conv':
         return base_noKura_conv(args, connectivity, num_global)
     elif args.model_name == 'Unet':
@@ -485,6 +487,66 @@ class base_noKura_conv(nn.Module):
     def reset_params(self):
         for i, m in enumerate(self.modules()):
             self.weights_init(m)
+
+class neighbor_conv(KuraNet):
+    def __init__(self, args, connectivity, num_global):
+        """
+        For various image size, feature maps are all in the same shape as input
+        """
+        super(neighbor_conv, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+
+        self.num_cn = args.num_cn
+        self.num_global = num_global
+        self.img_side = args.img_side
+        self.out_channels = args.num_cn
+        if num_global > 0: self.out_channels += 1
+        self.convs = []
+        self.depth = args.depth
+        self.activation = torch.tanh if args.activation == 'tanh' else nn.ReLU()
+        self.dropout = nn.Dropout(args.dropout_p)
+
+        start_filts = int(args.start_filts / 2)
+        for i in range(self.depth):
+            ins = args.in_channels if i == 0 else outs
+            outs = start_filts * (2 ** i)
+            conv = nn.Conv2d(ins, outs, kernel_size=args.kernel_size[0], stride=1, padding=int((args.kernel_size[0] - 1) / 2))
+            self.convs.append(conv)
+
+        self.convs = nn.ModuleList(self.convs)
+        self.conv_final = nn.Conv2d(outs, self.num_cn, kernel_size=args.kernel_size[0],stride=1, padding=int((args.kernel_size[0] - 1) / 2))
+        self.out_channels = outs
+        if args.intrinsic_frequencies == 'conv':
+            self.omega = nn.Linear(int(self.out_channels*args.img_side**2), int(args.img_side**2))
+        else:
+            self.omega = None
+
+        self.reset_params()
+
+    def forward(self, x):
+        x_in = x
+        for i, module in enumerate(self.convs):
+            x = self.activation(module(x)) #if i < self.depth - 1 else torch.sigmoid(module(x))
+
+        x = self.dropout(x.reshape(x.shape[0],-1)).reshape(x.shape[0],x.shape[1],x.shape[2],x.shape[3])
+
+        omega = self.omega(x.view(x.size(0), -1)) if self.omega is not None else None
+        x = self.conv_final(x).reshape(x.shape[0], self.num_cn, -1).transpose(2,1)
+
+        x = x / x.norm(p=2, dim=2).unsqueeze(2)
+
+        phase_list, coupling, omega = self.evolution(x, omega=omega, batch=x_in, hierarchical=False)
+        return phase_list, coupling, omega
+    @staticmethod
+    def weights_init(m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.xavier_normal_(m.weight)
+            nn.init.constant_(m.bias, 0)
+
+    def reset_params(self):
+        for i, m in enumerate(self.modules()):
+            self.weights_init(m)
+
+
 
 class criterion(nn.Module):
     def __init__(self, degree, in_size, device='cpu', classify=False, recurrent_classifier=False):
