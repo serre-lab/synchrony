@@ -10,6 +10,7 @@ import losses as ls
 import matplotlib.pyplot as plt
 import matplotlib.lines as lines
 import ipdb
+from torch.autograd import Variable
 
 class KuraNet(nn.Module):
     def __init__(self, img_side, connectivity, num_global, batch_size=32, device='cpu',
@@ -44,13 +45,13 @@ def load_net(args, connectivity, num_global):
         raise ValueError('Network not included so far')
 class just_kura(KuraNet):
         def __init__(self, args, connectivity, num_global):
-        """
-        For various image size, feature maps are all in the same shape as input
-        """
-        super(just_kura, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
+            super(just_kura, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
         
-        def forward(x):
-            phase_list, coupling, omega = self.evolution(x, omega = None,batch=None, hierarchical=False)
+        def forward(self,x,omega=None):
+            phase_list, coupling, omega = self.evolution(x, omega = omega,batch=None, hierarchical=False)
+            phase_list = torch.stack(phase_list)
+            #phase_list = Variable(phase_list, requires_grad = True)
+            #coupling = Variable(coupling, requires_grad = True)
             return phase_list, coupling, omega
             
 
@@ -501,19 +502,30 @@ class base_noKura_conv(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weights_init(m)
 
-class kur_criterion(nn.Module):
+class kura_criterion(nn.Module):
     def __init__(self,device ='cpu'):
+        super(kura_criterion, self).__init__()
+
         self.device = device
-    def forward(self,phase_list):
-        final_loss = calc_Rbar(phase_list[-1])
-        loss = torch.stack(calc_Rbar(phase_list[p]) for p in range(len(phase_list))).mean()
+    def forward(self,phase_list, record_steps):
+        
+        phase_list_trunc = phase_list[-1*record_steps:]
+        #loss_fake = self.calc_Rbar(phase_list_trunc[0,0,:])
+        final_loss = self.each_time(phase_list_trunc[-1])
+        loss = torch.stack([self.each_time(phase_list_trunc[p])*(p+1) for p in range(len(phase_list_trunc))]).mean()
         return loss, final_loss
-    def calc_Rbar(phase)
+    
+    def each_time(self,phase_list):
+        return torch.stack([self.calc_Rbar(phase_list[p,:]) for p in range(phase_list.shape[0])]).mean()
+        
+    def calc_Rbar(self,phase):
+        #import pdb; pdb.set_trace()
         phase_num = len(phase)
-        comb = torch.cos(phase).sum()**2+torch.sin(phase).sum()
+        comb = torch.cos(phase).mean()**2+torch.sin(phase).mean()**2
         R = torch.sqrt(comb)
         Rbar = R/phase_num
-        return Rbar
+        return 1-Rbar
+    
 
 
 class criterion(nn.Module):
