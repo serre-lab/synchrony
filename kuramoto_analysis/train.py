@@ -173,8 +173,8 @@ else:
 if args.classify is True:
     params += [q3 for q3 in classifier_params]
     
-#K = torch.tensor(np.random.uniform(-1,1,size = [args.img_side**2,args.img_side**2])).to(args.device)
-K = torch.tensor(np.random.normal(loc = 0, scale = 0.01,size = [args.img_side**2,args.img_side**2]))
+K = torch.tensor(np.random.uniform(0,0.01,size = [args.img_side**2,args.img_side**2])).to(args.device)
+#K = torch.tensor(np.random.normal(loc = 0, scale = 0.01,size = [args.img_side**2,args.img_side**2]))
 K = Variable(K,requires_grad = True)
 print(K)
 #params = K
@@ -203,7 +203,8 @@ PL_train = []
 PL_val = []
 clustering_train = []
 clustering_val = []
-omega = 2*np.pi * torch.normal(mean = 1, std = 0.01, size = (args.batch_size,args.img_side**2))
+#omega = 2*np.pi * torch.normal(mean = 0, std = 10, size = (args.batch_size,args.img_side**2))
+omega = torch.distributions.Uniform(0,10).rsample(sample_shape = (args.batch_size,args.img_side**2))
 
 for epoch in range(args.train_epochs):
     print('Epoch: {}'.format(epoch))
@@ -227,9 +228,12 @@ for epoch in range(args.train_epochs):
 #             phase_list_train, coupling_train, omega_train = model(batch.unsqueeze(0), omega)
 #         else:        
 #             phase_list_train, coupling_train, omega_train = model(batch, omega)
-
         tavg_loss, final_loss = criterion(phase_list_train, args.record_steps)
+        if final_loss<0.5:
+            import pdb; pdb.set_trace()
+            tavg_loss, final_loss = criterion(phase_list_train, args.record_steps)
         #tavg_loss = torch.sum(phase_list_train)
+        #tavg_loss.backward()
         tavg_loss.backward()
         op.step()
         #print(K._grad)
@@ -367,3 +371,67 @@ for epoch in range(args.train_epochs):
         plt.close()
 
 print(K)
+
+
+def load_files(directory):
+    files = os.listdir(directory)
+    phase_files = []
+    phases = []
+    for f in files:
+        if 'phase' in f:
+            phase_files.append(f)
+            phases.append(torch.load(directory+f).cpu().detach().numpy())
+    return phases
+
+def plot_phase_line(directory,num_osc):
+    phases = load_files(directory)
+    osc = {}
+    for i in range(num_osc):
+        this_osc = []
+        for j in range(len(phases)):
+            this_osc.append(phases[j][0][i])
+        osc[i] = this_osc
+    for i in osc:
+        plt.plot(osc[i])
+    plt.xlabel('Epochs')
+    plt.yticks([0,0.5*np.pi,np.pi,1.5*np.pi,2*np.pi])
+    plt.ylabel('Phase')
+    plt.savefig(directory+'PhaseAcrossTraining.png')
+def load_files_coupling(directory):
+    files = os.listdir(directory)
+    K_files = []
+    K = []
+    for f in files:
+        if 'K' in f:
+            K_files.append(f)
+            K.append(torch.load(directory+f).cpu().detach().numpy())
+    return K
+#will plot the phases and make gif
+def plot_coupling(directory, num_osc,num_vis = 10):
+    couplings = load_files_coupling(directory)
+
+    im_side = int(num_osc**0.5)
+    update = int(len(couplings)/num_vis)
+    p = []
+    for i in range(num_vis):
+        p.append(update*i)
+    p.append(len(couplings)-1)
+    for i in range(len(p)):
+    #for i in range(5):
+        plt.subplot(2,(num_vis+2)/2,i+1)
+        coupling = couplings[p[i]]
+        fig = plt.imshow(coupling)
+        #plt.plot(phases[p[i]][0]+p[i])
+        fig.axes.get_xaxis().set_visible(False)
+        fig.axes.get_yaxis().set_visible(False)
+        plt.title(str(p[i]))
+    plt.subplot(2,(num_vis+2)/2,num_vis)
+    #fig.colorbar()
+    plt.suptitle('Coupling Across Training Epochs') 
+    plt.savefig(directory+'CouplingAcrossTraining.png')
+print('Plotting Phase Course')
+plot_phase_line(save_dir+'/',args.img_side**2)
+
+print('Plotting Coupling Course')
+plot_coupling(save_dir+'/', args.img_side**2)
+    

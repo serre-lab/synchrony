@@ -512,6 +512,7 @@ class kura_criterion(nn.Module):
         phase_list_trunc = phase_list[-1*record_steps:]
         #loss_fake = self.calc_Rbar(phase_list_trunc[0,0,:])
         final_loss = self.each_time(phase_list_trunc[-1])
+        #import pdb; pdb.set_trace()
         loss = torch.stack([self.each_time(phase_list_trunc[p])*(p+1) for p in range(len(phase_list_trunc))]).mean()
         return loss, final_loss
     
@@ -520,8 +521,9 @@ class kura_criterion(nn.Module):
         
     def calc_Rbar(self,phase):
         #import pdb; pdb.set_trace()
+    
         phase_num = len(phase)
-        comb = torch.cos(phase).mean()**2+torch.sin(phase).mean()**2
+        comb = torch.cos(phase).sum()**2+torch.sin(phase).sum()**2
         R = torch.sqrt(comb)
         Rbar = R/phase_num
         return 1-Rbar
