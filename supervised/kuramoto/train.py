@@ -168,7 +168,7 @@ else:
     criterion = nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device).to(args.device)
     classifier_params = criterion.classifier.parameters() if args.classify is True else []
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
-
+ipdb.set_trace()
 loss_history = []
 final_loss_history = []
 ns_history=[]

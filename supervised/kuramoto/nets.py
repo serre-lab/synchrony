@@ -45,17 +45,15 @@ def load_net(args, connectivity, num_global):
     else:
         raise ValueError('Network not included so far')
 class just_kura(KuraNet):
-        def __init__(self, args, connectivity, num_global):
+    def __init__(self, args, connectivity, num_global):
         """
         For various image size, feature maps are all in the same shape as input
         """
         super(just_kura, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
         
-        def forward(x):
-            phase_list, coupling, omega = self.evolution(x, omega = None,batch=None, hierarchical=False)
-            return phase_list, coupling, omega
-            
-
+    def forward(x):
+        phase_list, coupling, omega = self.evolution(x, omega = None,batch=None, hierarchical=False)
+        return phase_list, coupling, omega
     
 
 class DownConv(nn.Module):
@@ -400,7 +398,7 @@ class base_conv(KuraNet):
             self.linear2 = nn.Linear((self.img_side ** 2), self.img_side ** 2 + self.num_global ** 2 - self.num_global)
         self.reset_params()
 
-    def forward(self, x):
+    def forward(self, x, run_dynamics=True):
         x_in = x
         for i, module in enumerate(self.convs):
             x = self.activation(module(x)) #if i < self.depth - 1 else torch.sigmoid(module(x))
@@ -417,8 +415,11 @@ class base_conv(KuraNet):
 
             x = x / x.norm(p=2, dim=2).unsqueeze(2)
 
-            phase_list, coupling, omega = self.evolution(x, omega=omega, batch=x_in, hierarchical=False)
-            return phase_list, coupling, omega
+            if run_dynamics:
+                phase_list, coupling, omega = self.evolution(x, omega=omega, batch=x_in, hierarchical=False)
+                return phase_list, coupling, omega
+            else:
+                return coupling
         else:
             x1 = self.linear1(x[:, :-1,
                               ...].reshape(-1, int(((self.out_channels - 1)/self.split) *
@@ -431,9 +432,10 @@ class base_conv(KuraNet):
             x1 = x1 / x1.norm(p=2, dim=2).unsqueeze(2)
             x2 = x2 / x2.norm(p=2, dim=2).unsqueeze(2)
             x=[x1,x2]
-            phase_list, coupling, omega = self.evolution(x, omega=omega, batch=x_in, hierarchical=True)
-            phase_list = [phase[:, :-self.num_global] for phase in phase_list]
-            return phase_list, coupling, omega
+            if run_dymamics:
+                phase_list, coupling, omega = self.evolution(x, omega=omega, batch=x_in, hierarchical=True)
+                phase_list = [phase[:, :-self.num_global] for phase in phase_list]
+                return phase_list, coupling, omega
 
     @staticmethod
     def weights_init(m):
@@ -568,13 +570,12 @@ class kur_criterion(nn.Module):
         final_loss = calc_Rbar(phase_list[-1])
         loss = torch.stack(calc_Rbar(phase_list[p]) for p in range(len(phase_list))).mean()
         return loss, final_loss
-    def calc_Rbar(phase)
+    def calc_Rbar(phase):
         phase_num = len(phase)
         comb = torch.cos(phase).sum()**2+torch.sin(phase).sum()
         R = torch.sqrt(comb)
         Rbar = R/phase_num
         return Rbar
-
 
 class criterion(nn.Module):
     def __init__(self, degree, in_size, device='cpu', classify=False, recurrent_classifier=False):

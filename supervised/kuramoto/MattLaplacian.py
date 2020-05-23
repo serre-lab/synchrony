@@ -25,13 +25,21 @@ class Laplacian():
         self.weighted = weighted
         self.nodes = len(W)
         
-    def get_L(self):
-        W = self.W
+    def get_L(self, signed=False, normalized=False):
         A = self.calc_adj()
-        D = self.get_D()
+        D = self.get_D(signed=signed)
         Lin = D[0]-A
         Lout = D[1]-A
         Lboth = D[2]-A
+        if normalized:
+            N0 = np.diag(np.diag(D[0])**(-.5))
+            N1 = np.diag(np.diag(D[1])**(-.5))
+            N2 = np.diag(np.diag(D[2])**(-.5))
+ 
+            Lin = np.matmul(N0,np.matmul(Lin,N0))
+            Lout = np.matmul(N1,np.matmul(Lout,N1))
+            Lboth = np.matmul(N2,np.matmul(Lboth,N2))
+
         self.Lin = Lin
         self.Lout = Lout
         self.Lboth = Lboth
@@ -41,8 +49,9 @@ class Laplacian():
         A = np.where(W>0, 1,0) if not self.weighted else W
         self.A = A
         return A
-    def get_D(self):
+    def get_D(self, signed=False):
         A = self.A
+        if signed: A = np.abs(A)
         W = self.W
         D = []
         Din = np.zeros(len(A))
@@ -63,9 +72,9 @@ class Laplacian():
         self.Dboth = Dboth
         return(D)
 
-    def get_eigen(self): # modified from laplacian partition from Netprop.py
+    def get_eigen(self, signed=False, normalized=False): # modified from laplacian partition from Netprop.py
             #using just Lboth for now
-            Lin,Lout, Lboth = self.get_L()
+            Lin,Lout, Lboth = self.get_L(signed=signed, normalized=normalized)
             val, vec = LA.eig(Lout) #Lboth in Netprop.py
             #print(Lin)
             self.val = val
@@ -167,7 +176,6 @@ def animate_directed(i):
     plt.ylim([-10, 10])
     return scat_r,scat_i
 
-
 #fig, ax = plt.subplots()
 #A = np.array([
 #  [0, 1, 1, 0, 0, -1., 0, 0, 1, 1],
@@ -191,27 +199,27 @@ def animate_directed(i):
 #ani.save('/home/matt/laplacian/signed_spectrum.gif', fps=30, writer='imagemagick')
 #plt.close()
 
-fig, ax = plt.subplots()
+#fig, ax = plt.subplots()
 
-A = np.array([
-  [0, 1, 1, 0, 0, 1., 0, 0, 1, 1],
-  [1, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-  [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-  [0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
-  [1., 0, 0, 1, 1, 0, 1, 1, 0, 0],
-  [0, 0, 0, 0, 0, 1, 0, 1, 0, 0],
-  [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
+#A = np.array([
+#  [0, 1, 1, 0, 0, 1., 0, 0, 1, 1],
+#  [1, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+#  [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+#  [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
+#  [0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
+#  [1., 0, 0, 1, 1, 0, 1, 1, 0, 0],
+#  [0, 0, 0, 0, 0, 1, 0, 1, 0, 0],
+#  [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
+#  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+#  [1, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
 
-L = Laplacian(A, weighted=True)
-val, vec = L.get_eigen()
-scat_r = ax.scatter(np.arange(A.shape[0]), np.sort(np.real(val)),c='b')
-scat_i = ax.scatter(np.arange(A.shape[0]), np.sort(np.imag(val)),c='r')
+#L = Laplacian(A, weighted=True)
+#val, vec = L.get_eigen()
+#scat_r = ax.scatter(np.arange(A.shape[0]), np.sort(np.real(val)),c='b')
+#scat_i = ax.scatter(np.arange(A.shape[0]), np.sort(np.imag(val)),c='r')
 
-frames=100
-ani = animation.FuncAnimation(fig, animate_directed, frames=frames)
-writer = animation.FFMpegWriter(fps=15)
-ani.save('/home/matt/laplacian/directed_spectrum.gif', fps=30, writer='imagemagick')
+#frames=100
+#ani = animation.FuncAnimation(fig, animate_directed, frames=frames)
+#writer = animation.FFMpegWriter(fps=15)
+#ani.save('/home/matt/laplacian/directed_spectrum.gif', fps=30, writer='imagemagick')
 
