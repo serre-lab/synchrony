@@ -13,7 +13,7 @@ from tqdm import tqdm
 import display as disp
 import sys
 from distutils.util import strtobool
-from losses import calc_sbd, calc_pq
+from losses import calc_sbd, calc_pq, calc_meanIoU
 from utils import *
 import ipdb
 import warnings
@@ -180,6 +180,8 @@ if args.segmentation_metric == 'sbd':
     accuracy = calc_sbd
 elif args.segmentation_metric == 'pq':
     accuracy = calc_pq
+elif args.segmentation_metric == 'iou':
+    accuracy = calc_meanIoU
 else:
     raise NotImplemented("The chosen segmentation metric is not recognized.")
 
