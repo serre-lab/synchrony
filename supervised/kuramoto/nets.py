@@ -45,15 +45,15 @@ def load_net(args, connectivity, num_global):
     else:
         raise ValueError('Network not included so far')
 class just_kura(KuraNet):
-        def __init__(self, args, connectivity, num_global):
+    def __init__(self, args, connectivity, num_global):
         """
         For various image size, feature maps are all in the same shape as input
         """
         super(just_kura, self).__init__(args.img_side, connectivity, num_global, batch_size=args.batch_size, update_rate=args.update_rate, anneal=args.anneal, time_steps=args.time_steps, phase_initialization=args.phase_initialization, walk_step=args.walk_step, intrinsic_frequencies=args.intrinsic_frequencies, device=args.device)
-        
-        def forward(x):
-            phase_list, coupling, omega = self.evolution(x, omega = None,batch=None, hierarchical=False)
-            return phase_list, coupling, omega
+    
+    def forward(x):
+        phase_list, coupling, omega = self.evolution(x, omega = None,batch=None, hierarchical=False)
+        return phase_list, coupling, omega
             
 
     
@@ -568,7 +568,7 @@ class kur_criterion(nn.Module):
         final_loss = calc_Rbar(phase_list[-1])
         loss = torch.stack(calc_Rbar(phase_list[p]) for p in range(len(phase_list))).mean()
         return loss, final_loss
-    def calc_Rbar(phase)
+    def calc_Rbar(phase):
         phase_num = len(phase)
         comb = torch.cos(phase).sum()**2+torch.sin(phase).sum()
         R = torch.sqrt(comb)
