@@ -229,11 +229,7 @@ for epoch in range(args.train_epochs):
 #         else:        
 #             phase_list_train, coupling_train, omega_train = model(batch, omega)
         tavg_loss, final_loss = criterion(phase_list_train, args.record_steps)
-        if final_loss<0.5:
-            import pdb; pdb.set_trace()
-            tavg_loss, final_loss = criterion(phase_list_train, args.record_steps)
-        #tavg_loss = torch.sum(phase_list_train)
-        #tavg_loss.backward()
+    
         tavg_loss.backward()
         op.step()
         #print(K._grad)
@@ -244,12 +240,19 @@ for epoch in range(args.train_epochs):
         fl+= final_loss.data.cpu().numpy()
         torch.save(K, save_dir+'/K_epoch{}.pt'.format(epoch))
         torch.save(phase_list_train[-1], save_dir+'/phase_epoch{}.pt'.format(epoch))
-
-    
+        for i in range(args.img_side**2):
+            plt.plot(phase_list_train.detach().cpu()[:,:,i])
+        plt.xlabel('Time Step')
+        plt.ylabel('Phase')
+        plt.title('Epoch {} Phase Over Time'.format(epoch))
+        plt.savefig(save_dir+'/plot_phase_over_time_epoch_{}.png'.format(epoch))
+        plt.close()
             
     if step > 0:
         loss_history.append(l / (step+1))
         final_loss_history.append(fl / (step+1))
+        
+        
    
      # Testing 
 #     if epoch  % args.eval_interval == 0:
@@ -378,10 +381,24 @@ def load_files(directory):
     phase_files = []
     phases = []
     for f in files:
-        if 'phase' in f:
+        if np.logical_and('phase' in f, 'pt' in f):
             phase_files.append(f)
-            phases.append(torch.load(directory+f).cpu().detach().numpy())
+    sorted_files = order_files(phase_files)
+    for f in sorted_files:
+        phases.append(torch.load(directory+f))
     return phases
+def order_files(files):
+    files_sorted = []
+    epoch_num =[]
+
+    for f in files:
+        epoch_num.append(int(f.split('.pt')[0].split('epoch')[1]))
+    df= pd.DataFrame({'file': files, 'num': epoch_num})
+    df = df.sort_values(by = 'num')
+    files_sorted = []
+    for f in df['file']:
+        files_sorted.append(f)
+    return files_sorted
 
 def plot_phase_line(directory,num_osc):
     phases = load_files(directory)
@@ -404,7 +421,9 @@ def load_files_coupling(directory):
     for f in files:
         if 'K' in f:
             K_files.append(f)
-            K.append(torch.load(directory+f).cpu().detach().numpy())
+    sorted_files = order_files(K_files)
+    for f in sorted_files:
+        K.append(torch.load(directory+f).cpu().detach().numpy())
     return K
 #will plot the phases and make gif
 def plot_coupling(directory, num_osc,num_vis = 10):
