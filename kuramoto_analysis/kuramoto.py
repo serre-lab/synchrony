@@ -142,14 +142,18 @@ class Kuramoto(object):
 
         else:
             batch_lconnectivity = self.connectivity0.unsqueeze(0).repeat(coupling.shape[0],1,1).to(dv)
-            coupling = torch.zeros(phase.shape[0], phase.shape[1], phase.shape[1]).to(dv).scatter_(dim=2,index=batch_lconnectivity, src=coupling)
+            coupling1 = torch.zeros(phase.shape[0], phase.shape[1], phase.shape[1]).to(dv).scatter_(dim=2,index=batch_lconnectivity, src=coupling.float())
 
         for i in range(self.time_steps):
-            new = self.update(phase_list[-1].to(dv), coupling, omega.to(dv))
+            new = self.update(phase_list[-1].to(dv), coupling1, omega.to(dv))
             self.eps_anneal(i)
+            for B in range(len(new)):
+                for P in range(len(new[B])):
+                    new[B][P] = new[B][P]%(2*np.pi)
+                    
             phase_list.append(new)
         try:
-            return phase_list, coupling, omega.to(dv)
+            return phase_list, coupling1, omega.to(dv)
         except RuntimeError:
             print('No updating')
     
