@@ -447,7 +447,7 @@ def calc_sbd(ins_seg_gt, ins_seg_pred):
     _dice2 = calc_bd(ins_seg_pred, ins_seg_gt)
     return min(_dice1, _dice2)
 
-def calc_pq(seg_gt, seg_pred, threshold=.5):
+def calc_pq(seg_pred, seg_gt, threshold=.5):
 
     seg_gt = np.array([1*(seg_gt == i) for i in np.unique(seg_gt)])
     seg_pred = np.array([1*(seg_pred == i) for i in np.unique(seg_pred)])
@@ -466,4 +466,18 @@ def calc_pq(seg_gt, seg_pred, threshold=.5):
     PQ = max_IoU.sum() / (TP + .5*FP + .5*FN)
     return PQ
 
+def calc_meanIoU(seg_pred, seg_gt, threshold=.5):
 
+    seg_gt = np.array([1*(seg_gt == i) for i in np.unique(seg_gt)])
+    seg_pred = np.array([1*(seg_pred == i) for i in np.unique(seg_pred)])
+
+    all_intersections = np.einsum('gi,pi->gpi',seg_gt,seg_pred)
+    all_unions = np.clip(seg_gt[:,np.newaxis,...] + seg_pred[np.newaxis,...],0,1)
+
+    all_IoU = all_intersections.sum(2) / all_unions.sum((2))
+    
+    all_IoU = all_IoU * (all_IoU == all_IoU.max(axis=0, keepdims=True)[0]) # remove duplication
+    argmax_IoU= np.argmax(all_IoU,1)
+    max_IoU = np.take_along_axis(all_IoU, argmax_IoU[:,np.newaxis],axis=1)
+    
+    return max_IoU.sum() /  seg_gt.shape[0]
