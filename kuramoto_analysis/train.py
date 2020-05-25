@@ -17,6 +17,7 @@ from losses import calc_sbd, calc_pq, just_kuramoto
 from utils import *
 import ipdb
 import warnings
+import pandas as pd
 warnings.filterwarnings('ignore')
 from NetProp import NetProp 
 import glob
@@ -84,6 +85,10 @@ parser.add_argument('--transform', type=str, default='linear')
 parser.add_argument('--classify',type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--recurrent_classifier',type=lambda x:bool(strtobool(x)), default=False)
 parser.add_argument('--segmentation_metric', type=str, default='pq')
+
+
+parser.add_argument('--omega_min', type=float, default=0)
+parser.add_argument('--omega_max', type = float, default = 10)
 
 args = parser.parse_args()
 args.kernel_size = [int(k) for k in args.kernel_size.split(',')]
@@ -203,8 +208,10 @@ PL_train = []
 PL_val = []
 clustering_train = []
 clustering_val = []
+import pdb; pdb.set_trace()
 #omega = 2*np.pi * torch.normal(mean = 0, std = 10, size = (args.batch_size,args.img_side**2))
-omega = torch.distributions.Uniform(0,10).rsample(sample_shape = (args.batch_size,args.img_side**2))
+omega = torch.distributions.Uniform(args.omega_min,args.omega_max).rsample(sample_shape = (args.batch_size,args.img_side**2))
+import pdb; pdb.set_trace()
 
 for epoch in range(args.train_epochs):
     print('Epoch: {}'.format(epoch))
@@ -375,7 +382,6 @@ for epoch in range(args.train_epochs):
 
 print(K)
 
-
 def load_files(directory):
     files = os.listdir(directory)
     phase_files = []
@@ -436,18 +442,22 @@ def plot_coupling(directory, num_osc,num_vis = 10):
         p.append(update*i)
     p.append(len(couplings)-1)
     for i in range(len(p)):
-    #for i in range(5):
         plt.subplot(2,(num_vis+2)/2,i+1)
         coupling = couplings[p[i]]
-        fig = plt.imshow(coupling)
+        c_min = np.min(couplings)
+        c_max = np.max(couplings)
+        #print(np.min(couplings[p[i]]), np.max(couplings[p[i]]))
+        fig = plt.imshow(coupling,cmap = 'hsv', vmin = c_min+0.05, vmax = c_max+0.05)
         #plt.plot(phases[p[i]][0]+p[i])
         fig.axes.get_xaxis().set_visible(False)
         fig.axes.get_yaxis().set_visible(False)
         plt.title(str(p[i]))
-    plt.subplot(2,(num_vis+2)/2,num_vis)
-    #fig.colorbar()
+    #plt.subplot(2,(num_vis+2)/2,num_vis)
+    plt.colorbar(cmap = 'hsv')
     plt.suptitle('Coupling Across Training Epochs') 
+    #plt.show()
     plt.savefig(directory+'CouplingAcrossTraining.png')
+    
 print('Plotting Phase Course')
 plot_phase_line(save_dir+'/',args.img_side**2)
 
