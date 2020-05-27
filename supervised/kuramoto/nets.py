@@ -593,7 +593,7 @@ class criterion(nn.Module):
         if not self.classify:
             if valid:
                 losses = \
-                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0).detach(),
+                    ls.cohn_loss(torch.cat(phase_list, dim=0).detach(),
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
@@ -603,7 +603,7 @@ class criterion(nn.Module):
 
             else:
                 losses = \
-                    ls.exinp_integrate_torch2(torch.cat(phase_list, dim=0),
+                    ls.cohn_loss(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)

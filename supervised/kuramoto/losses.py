@@ -2,6 +2,23 @@ import numpy as np
 import torch
 import ipdb
 
+def cohn_loss(phase, masks, transform, device):
+    valid_groups = ((masks.sum(2) > 0)*1) == 1
+    num_groups = valid_groups.sum(1)
+    group_size = masks.sum(2)
+    masked_phases = phase.unsqueeze(1) * masks
+    xx = torch.where(masks.bool(), torch.cos(masked_phases), torch.zeros_like(masked_phases))
+    yy = torch.where(masks.bool(), torch.sin(masked_phases), torch.zeros_like(masked_phases))
+    go = torch.sqrt((xx.sum(2))**2 + (yy.sum(2))**2) / torch.where(group_size > 0, group_size, torch.ones_like(group_size))
+    synch = 1 - go.mean()
+   
+    mean_angles = torch.atan2(yy.sum(2), xx.sum(2))
+    valid_mask = torch.einsum('bi,bj->bij',valid_groups,valid_groups)
+    phase_diffs = (mean_angles.unsqueeze(2) - mean_angles.unsqueeze(1))*valid_mask
+    desynch = ((-1*torch.log(torch.abs(2*torch.sin(.5*(phase_diffs))) + 1e-5)) + np.log(2)).sum((1,2)) / (num_groups)**2
+
+    return .5*(synch + desynch)
+
 def exinp_integrate_torch(phase, mask, transform, device):
     phase = phase.to(device)
     mask = mask.to(device)

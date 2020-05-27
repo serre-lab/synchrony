@@ -191,8 +191,11 @@ else:
 # Testing 
 l=0
 fl=0
-acc = 0
+acc_meanIoU = 0
+acc_pq = 0
 ns = 0
+num_batch_save = 50
+num_saved = 0
 
 model.eval()
 with torch.no_grad():
@@ -216,10 +219,21 @@ with torch.no_grad():
             clustered_img, n_clusters = clustering(sample_phase, algorithm = args.clustering_algorithm, max_clusters=args.segments)
             clustered_batch.append(clustered_img)
             predicted_segs_batch.append(n_clusters)
-            acc += accuracy(clustered_batch[idx]+1, sample_mask+1)
+            acc_meanIoU += calc_meanIoU(clustered_batch[idx]+1, sample_mask+1)
+            acc_pq += calc_pq(clustered_batch[idx]+1, sample_mask+1)
         ns += (1.*(np.array(predicted_segs_batch) == num_segments.cpu().numpy())).mean()
-        print('Running accuracy: {}'.format(acc / ((step+1) * args.batch_size)))
+        print('Running mean IoU: {}'.format(acc_meanIoU / ((step+1) * args.batch_size)))
+        print('Running pq: {}'.format(acc_pq / ((step+1) * args.batch_size)))
         print('Running # seg accuracy: {}'.format(ns / ((step+1))))
+
+        if num_saved < num_batch_save:
+            np.save('/media/data_cifs/matt/diss_figs/bl_batch{}.npy'.format(num_saved + 5), batch.cpu().numpy()) 
+            np.save('/media/data_cifs/matt/diss_figs/bl_mask{}.npy'.format(num_saved + 5), mask.cpu().numpy()) 
+            np.save('/media/data_cifs/matt/diss_figs/bl_phase{}.npy'.format(num_saved + 5), last_phase) 
+            np.save('/media/data_cifs/matt/diss_figs/bl_clustered{}.npy'.format(num_saved + 5), np.array(clustered_batch)) 
+            num_saved +=1
+        else:
+            ipdb.set_trace()
 
         tavg_loss_test, final_loss_test = criterion(phase_list_test[-1*args.record_steps:], mask, args.transform, valid=True, targets=labels)
         if coupling_test is not None:
@@ -236,8 +250,10 @@ with torch.no_grad():
 
 print('Test loss: {}'.format(l / (step + 1)))
 print('Test final loss: {}'.format(fl / (step + 1)))
-print('Test accuracy: {}'.format(acc / ((step+1) * args.batch_size)))
+print('Test mean IoU: {}'.format(acc_meanIoU / ((step+1) * args.batch_size)))
+print('Test pq: {}'.format(acc_pq / ((step+1) * args.batch_size)))
 
 np.save(os.path.join(save_dir, 'test_loss.npy'), l / (step + 1))
 np.save(os.path.join(save_dir, 'test_final_loss.npy'), fl / (step + 1))
-np.save(os.path.join(save_dir, 'test_acc.npy'), acc / ((step + 1) * args.batch_size))
+np.save(os.path.join(save_dir, 'test_meanIoU.npy'), acc_meanIoU / ((step + 1) * args.batch_size))
+np.save(os.path.join(save_dir, 'test_pq.npy'), acc_pq / ((step + 1) * args.batch_size))
