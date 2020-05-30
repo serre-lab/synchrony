@@ -578,7 +578,7 @@ class kur_criterion(nn.Module):
         return Rbar
 
 class criterion(nn.Module):
-    def __init__(self, degree, in_size, device='cpu', classify=False, recurrent_classifier=False):
+    def __init__(self, loss_name, degree, in_size, device='cpu', classify=False, recurrent_classifier=False):
         super(criterion, self).__init__()
         self.classify = classify
         if self.classify: 
@@ -587,13 +587,19 @@ class criterion(nn.Module):
         self.device = device
         self.recurrent_classifier = recurrent_classifier
         self.degree = degree
+        if loss_name == 'cos':
+            self.loss_func = ls.exinp_integrate_torch2
+        elif loss_name == 'cohn':
+            self.loss_func = ls.cohn_loss
+        else:
+            raise ValueError('Please enter a recognized loss function.')
 
     def forward(self, phase_list, mask, transform, valid=False, targets=None):
         # losses will be 1d, with its length = episode length
         if not self.classify:
             if valid:
                 losses = \
-                    ls.cohn_loss(torch.cat(phase_list, dim=0).detach(),
+                   self.loss_func(torch.cat(phase_list, dim=0).detach(),
                                           mask.repeat(len(phase_list), 1, 1).detach(),
                                           transform,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)
@@ -603,7 +609,7 @@ class criterion(nn.Module):
 
             else:
                 losses = \
-                    ls.cohn_loss(torch.cat(phase_list, dim=0),
+                    self.loss_func(torch.cat(phase_list, dim=0),
                                           mask.repeat(len(phase_list), 1, 1),
                                           transform,
                                           self.device).reshape(len(phase_list), mask.shape[0]).mean(1)

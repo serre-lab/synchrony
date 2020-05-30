@@ -37,6 +37,7 @@ parser.add_argument('--eval_interval', type=int,default=1)
 parser.add_argument('--verbosity', type=int,default=1)
 # Model parameters
 parser.add_argument('--model_name', type=str, default='simple_conv')
+parser.add_argument('--loss', type=str, default='cos')
 parser.add_argument('--in_channels', type=int, default=1)
 parser.add_argument('--start_filts', type=int, default=32)
 parser.add_argument('--depth', type=int, default=2)
@@ -154,7 +155,7 @@ if torch.cuda.device_count() > 1 and args.device=='cuda':
         model.load_state_dict(pretrained_model['model_state_dict'])
         if args.phase_initialization == 'fixed':  model.osci.phase_init('fixed', fixed_phase=pretrained_model['initial_phase'])
     freq_params = model.module.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
-    criterion = nn.DataParallel(nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device)).to(args.device)
+    criterion = nn.DataParallel(nets.criterion(args.loss, args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device)).to(args.device)
     classifier_params = criterion.module.classifier.parameters() if args.classify is True else []
 else:
     model = nets.load_net(args, connectivity, args.num_global_control).to(args.device)
@@ -162,7 +163,7 @@ else:
         model.load_state_dict(pretrained_model['model_state_dict'])
         if args.phase_initialization == 'fixed' and not 'noKura' in args.model_name:  model.osci.phase_init('fixed', fixed_phase=pretrained_model['initial_phase'])
     freq_params = model.osci.freq_net.parameters() if args.intrinsic_frequencies=='learned' else []
-    criterion = nets.criterion(args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device).to(args.device)
+    criterion = nets.criterion(args.loss, args.time_weight, args.img_side**2, classify=args.classify, recurrent_classifier=args.recurrent_classifier, device=args.device).to(args.device)
     classifier_params = criterion.classifier.parameters() if args.classify is True else []
     print('network contains {} parameters'.format(nets.count_parameters(model))) # parameter number
 
