@@ -111,7 +111,7 @@ load_dir = os.path.join('/media/data_cifs/yuwei/osci_save/data', args.data_name,
 save_dir = os.path.join('/media/data_cifs/yuwei/osci_save/results', args.exp_name)
 model_dir = os.path.join('/media/data_cifs/yuwei/osci_save/models', args.exp_name)
 train_path = load_dir + '/training'
-test_path = load_dir + '/test'
+test_path = load_dir + '/training'
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 if not os.path.exists(model_dir):
