@@ -367,6 +367,7 @@ class base_conv(KuraNet):
         self.out_channels = args.out_channels
         if num_global > 0: self.out_channels += 1
         self.split = args.split
+        self.normalized = args.normalized
         self.convs = []
         self.depth = args.depth
         self.activation = torch.tanh if args.activation == 'tanh' else nn.ReLU()
